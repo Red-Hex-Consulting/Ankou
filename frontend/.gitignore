@@ -1,0 +1,79 @@
+# Node dependencies
+node_modules/
+
+# Build output / temp files
+dist/
+build/
+*.log
+*.tmp
+*.cache
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+*.key
+*.crt
+*.pem
+jwt.secret
+hmac.key
+registration.key
+
+# Databases / data dumps
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Coverage / test artifacts
+coverage/
+*.lcov
+
+# Lock / package artifacts generated locally
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tauri / Rust build caches
+src-tauri/target
+src-tauri/.cargo
+target/
+
+# IDE/editor clutter
+.vscode/
+.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.psess
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Generated TLS / cert files
+server.crt
+server.key
+.gocache
+
+# Server sensitive files
+server/agents.db
+server/loot/
+server/ankou-server
+server/jwt.secret
+
+# Listener configs (if generated per environment)
+server/listeners/*.json
+
+# Anything else project-specific goes here

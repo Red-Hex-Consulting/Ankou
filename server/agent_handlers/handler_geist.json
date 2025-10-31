@@ -1,0 +1,33 @@
+{
+  "id": "handler_geist",
+  "agentName": "geist",
+  "agentHttpHeaderId": "geist",
+  "supportedCommands": [
+    "ls",
+    "get",
+    "put",
+    "cd",
+    "kill",
+    "ps",
+    "exec",
+    "reconnect",
+    "injectsc",
+    "rm",
+    "rmdir",
+    "jitter"
+  ],
+  "commandMappings": {
+    "ls": "1",
+    "get": "2",
+    "put": "3",
+    "cd": "4",
+    "kill": "5",
+    "ps": "6",
+    "exec": "7",
+    "reconnect": "8",
+    "injectsc": "9",
+    "rm": "10",
+    "rmdir": "11",
+    "jitter": "12"
+  }
+}

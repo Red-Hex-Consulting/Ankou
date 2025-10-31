@@ -1,0 +1,139 @@
+.delete-script-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.delete-script-modal {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 450px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  position: relative;
+  margin: auto;
+}
+
+.delete-script-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #333;
+}
+
+.delete-script-modal-header h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.delete-script-modal-close {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.2s;
+  font-size: 16px;
+}
+
+.delete-script-modal-close:hover {
+  color: #fff;
+}
+
+.delete-script-modal-content {
+  padding: 20px;
+}
+
+.delete-script-warning {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  border-radius: 6px;
+  margin-bottom: 24px;
+}
+
+.delete-warning-icon {
+  font-size: 24px;
+  color: var(--accent-red);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.delete-warning-text {
+  flex: 1;
+}
+
+.warning-title {
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.warning-message {
+  color: #ccc;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.warning-message strong {
+  color: var(--accent-red);
+  font-weight: 600;
+}
+
+.delete-script-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.delete-script-cancel,
+.delete-script-confirm {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-script-cancel {
+  background: #333;
+  border: 1px solid #444;
+  color: #fff;
+}
+
+.delete-script-cancel:hover {
+  background: #444;
+}
+
+.delete-script-confirm {
+  background: var(--danger-red);
+  border: 1px solid var(--danger-red);
+  color: white;
+}
+
+.delete-script-confirm:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  box-shadow: 0 0 15px rgba(220, 38, 38, 0.3);
+}
+

@@ -1,0 +1,342 @@
+.scripts-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.scripts-search {
+  padding: 8px 20px 12px 20px;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.scripts-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scripts-search-input-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+}
+
+.scripts-search-input-wrapper .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.scripts-search-input {
+  width: 100%;
+  padding: 6px 12px 6px 36px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: border-color 0.2s ease;
+}
+
+.scripts-search-input:focus {
+  outline: none;
+  border-color: var(--accent-red);
+}
+
+.scripts-search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.scripts-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.scripts-form-container {
+  padding: 20px;
+}
+
+.scripts-add-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--accent-red);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 0.2s ease;
+}
+
+.scripts-add-btn:hover {
+  background: var(--accent-red-hover);
+}
+
+/* Script Editor */
+.script-editor {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.script-editor h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.script-form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.script-form-row input,
+.script-form-row textarea {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.script-form-row textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+.script-form-row input:focus,
+.script-form-row textarea:focus {
+  outline: none;
+  border-color: var(--accent-red);
+}
+
+.script-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+
+.script-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.scripts-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.scripts-upload-label:hover {
+  border-color: var(--accent-red);
+  color: var(--text-primary);
+}
+
+.scripts-upload-label input[type="file"] {
+  display: none;
+}
+
+.scripts-save-btn {
+  padding: 8px 16px;
+  background: var(--success-green);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.scripts-cancel-btn {
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Scripts List */
+.scripts-list {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--text-primary);
+  font-size: 13px;
+  background-color: var(--bg-secondary);
+  flex: 1;
+  overflow-y: auto;
+  display: block;
+}
+
+.scripts-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 40px;
+  gap: 12px;
+}
+
+.scripts-empty .empty-icon {
+  font-size: 48px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.scripts-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.script-item {
+  display: block;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.script-item:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.script-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.script-item-info {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.script-item-icon {
+  font-size: 16px;
+  color: var(--accent-red);
+  margin-top: 2px;
+}
+
+.script-item h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+.script-item-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.script-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-button,
+.delete-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.edit-button {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success-green);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+}
+
+.edit-button:hover {
+  transform: scale(1.05);
+  background: var(--success-green);
+  color: white;
+  border-color: var(--success-green);
+}
+
+.delete-button {
+  background: rgba(255, 99, 132, 0.1);
+  color: var(--accent-red);
+  border: 1px solid rgba(255, 99, 132, 0.35);
+}
+
+.delete-button:hover {
+  transform: scale(1.05);
+  background: var(--danger-red);
+  color: white;
+  border-color: var(--danger-red);
+}
+
+.script-item-preview {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.command-line {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0;
+  color: var(--text-primary);
+}
+
+.command-line.more {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.command-prompt {
+  color: var(--success-green);
+  font-weight: bold;
+}
+
+.command-line code {
+  color: var(--text-primary);
+}
+

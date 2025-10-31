@@ -1,0 +1,25 @@
+# Ankou Server Configuration Example (Secrets Only)
+# Copy this file to ankou.config and update with your own keys
+#
+# NOTE: Network settings (IPs/ports) are in server_config.json
+# This file contains ONLY cryptographic secrets
+#
+# All keys should be hex-encoded strings
+# The server will auto-generate keys if this file is empty when first run
+
+# JWT Secret - 128-character hex string for JWT signing (64 bytes)
+JWT_SECRET=a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456789012345678901234567890abcdef1234567890abcdef1234567890ab
+
+# HMAC Key - 64-character hex string for agent/relay authentication
+# This MUST match AGENT_HMAC_KEY in relay.config
+HMAC_KEY=1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23
+
+# Registration Key - 32-character hex string for operator registration
+REGISTRATION_KEY=deadbeef1234567890abcdef12345678
+
+# To generate your own keys:
+# openssl rand -hex 32  # For HMAC_KEY (64 chars)
+# openssl rand -hex 64  # For JWT_SECRET (128 chars)
+# openssl rand -hex 16  # For REGISTRATION_KEY (32 chars)
+
+# Make sure to keep this file secure and DO NOT commit it to version control!

@@ -1,0 +1,13 @@
+{
+  "relay": {
+    "host": "127.0.0.1",
+    "port": 8444,
+    "description": "Agent relay communication endpoint (REST API for agent tasking)"
+  },
+  "operator": {
+    "host": "0.0.0.0",
+    "port": 8443,
+    "description": "Operator console endpoint (WebSocket/GraphQL for frontend)"
+  }
+}
+

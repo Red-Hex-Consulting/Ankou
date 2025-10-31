@@ -1,0 +1,37 @@
+# Ghost Relay Configuration Example
+# Copy this file to relay.config and fill in the values
+#
+# The relay acts as a middleman between agents and the C2 server.
+
+# ========================================
+# UPSTREAM C2 SERVER
+# ========================================
+# URL of the C2 server relay endpoint (must use https://)
+UPSTREAM_URL=https://localhost:8444
+
+# ========================================
+# HMAC KEYS
+# ========================================
+# The relay needs TWO different HMAC keys for security:
+#
+# 1. AGENT_HMAC_KEY - Shared with agents to validate their incoming requests
+#    - Agents sign their requests with this key
+#    - Relay validates agent signatures with this key
+#    - Generate a unique key for agents (NOT the same as server key!)
+#
+# 2. SERVER_HMAC_KEY - Shared with C2 server to sign relay->server requests
+#    - Relay signs forwarded requests with this key
+#    - Server validates relay signatures with this key
+#    - MUST match the HMAC_KEY in the server's ankou.config
+#
+# To get the server's HMAC key:
+# 1. On the C2 server: cat ankou.config
+# 2. Copy the HMAC_KEY value
+# 3. Paste it below as SERVER_HMAC_KEY
+
+# Agent HMAC Key (generate with: openssl rand -hex 32)
+AGENT_HMAC_KEY=1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23
+
+# Server HMAC Key (copy from server's ankou.config)
+SERVER_HMAC_KEY=e023ab246af3d5fa0cfd75f1eff012c3e02d081b34f0620982660ae905756975
+
