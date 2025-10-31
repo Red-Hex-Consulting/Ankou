@@ -1,0 +1,55 @@
+# Node modules
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+frontend/dist/
+frontend/release/
+frontend/build/*.ico
+frontend/build/*.icns
+server/ankou-server
+server/ankou-server.exe
+ghost-relay/ghost-relay
+ghost-relay/ghost-relay.exe
+agents/*/geist-agent*
+agents/*/phantasm-agent*
+agents/*/shade-agent*
+
+# Configuration files (contain secrets)
+server/ankou.config
+server/server_config.json
+ghost-relay/relay.config
+server/listeners/*.json
+!server/listeners/listener_example.json
+
+# TLS certificates
+server/cert.pem
+server/key.pem
+ghost-relay/cert.pem
+ghost-relay/key.pem
+
+# Database
+server/agents.db
+server/agents.db-shm
+server/agents.db-wal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+.cache/
+

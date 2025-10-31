@@ -1,0 +1,70 @@
+.handlers-container .listeners-table-header,
+.handlers-container .listener-row {
+  grid-template-columns: 2fr 1.5fr 2fr 0.8fr;
+}
+
+.handlers-container .listeners-add-form h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.handler-command-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.handler-command-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.handler-empty,
+.handler-empty-row .listener-description {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.handler-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 1px dashed var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.handler-upload-label:hover {
+  border-color: var(--accent-red);
+  color: var(--text-primary);
+}
+
+.handler-upload-label input[type="file"] {
+  display: none;
+}
+
+.handler-upload-filename {
+  font-size: 12px;
+  color: var(--text-secondary);
+  align-self: center;
+}
+
+.handler-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.handlers-container .listeners-error {
+  margin: 8px 0 0 0;
+}

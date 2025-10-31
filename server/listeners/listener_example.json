@@ -1,0 +1,9 @@
+{
+  "id": "listener_example",
+  "name": "example",
+  "type": "https",
+  "endpoint": "/wiki",
+  "status": "running",
+  "description": "",
+  "createdAt": "2025-10-31T02:50:28.2616667-04:00"
+}

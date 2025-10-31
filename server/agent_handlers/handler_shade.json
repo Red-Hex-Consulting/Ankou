@@ -1,0 +1,25 @@
+{
+  "id": "handler_shade",
+  "agentName": "shade",
+  "agentHttpHeaderId": "shade",
+  "supportedCommands": [
+    "ls",
+    "get",
+    "put",
+    "cd",
+    "kill",
+    "ps",
+    "exec",
+    "reconnect"
+  ],
+  "commandMappings": {
+    "ls": "1",
+    "get": "2",
+    "put": "3",
+    "cd": "4",
+    "kill": "5",
+    "ps": "6",
+    "exec": "7",
+    "reconnect": "8"
+  }
+}

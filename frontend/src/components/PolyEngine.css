@@ -1,0 +1,580 @@
+/* Poly Engine Component Layout - Matching Agents Styling */
+.poly-engine-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  background-color: var(--bg-primary);
+  font-size: 14px;
+}
+
+.poly-engine-header {
+  padding: 8px 20px 12px 20px;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.poly-engine-search {
+  padding: 8px 20px 12px 20px;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.poly-engine-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.poly-engine-stats .stats-icon {
+  color: #000000;
+  background-color: var(--success-green);
+  border-radius: 50%;
+  padding: 4px;
+  font-size: 14px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.poly-engine-login-container {
+  background-color: var(--bg-primary);
+}
+
+.poly-engine-login-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-secondary);
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.poly-engine-login-card {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 28px;
+}
+
+.poly-engine-login-card-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.poly-engine-login-icon {
+  font-size: 48px;
+  color: var(--accent-red);
+  margin-bottom: 16px;
+}
+
+.poly-engine-login-card-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.poly-engine-login-card-header p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.poly-engine-login-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.poly-engine-login-form .form-group {
+  margin-bottom: 20px;
+}
+
+.poly-engine-login-form .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.poly-engine-login-form .form-group input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.poly-engine-login-form .form-group input:focus {
+  outline: none;
+  border-color: var(--border-color);
+}
+
+.poly-engine-login-form .login-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: stretch;
+}
+
+.poly-engine-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg-secondary);
+}
+
+.poly-engine-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* New Layout for Logs */
+.poly-engine-layout {
+  display: flex;
+  gap: 24px;
+  height: 100%;
+}
+
+.poly-engine-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  padding-right: 24px;
+}
+
+.poly-engine-logs {
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.poly-engine-logs h3 {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.poly-engine-logs-container {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 500px;
+}
+
+.poly-engine-log-entry {
+  margin-bottom: 4px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.poly-engine-logs-empty {
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+  margin: 20px 0;
+}
+
+/* Custom Scrollbars for Poly Engine */
+.poly-engine-left::-webkit-scrollbar,
+.poly-engine-logs-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.poly-engine-left::-webkit-scrollbar-track,
+.poly-engine-logs-container::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.poly-engine-left::-webkit-scrollbar-thumb,
+.poly-engine-logs-container::-webkit-scrollbar-thumb {
+  background: var(--accent-red);
+  border-radius: 3px;
+}
+
+.poly-engine-left::-webkit-scrollbar-thumb:hover,
+.poly-engine-logs-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-red-hover);
+}
+
+/* Connection Status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator.connected {
+  background-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-indicator.disconnected {
+  background-color: #6b7280;
+}
+
+.poly-engine-container .logout-btn {
+  margin-left: auto;
+  padding: 6px 12px;
+  background: var(--accent-red);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.poly-engine-container .logout-btn:hover {
+  background: var(--accent-red-hover);
+}
+
+/* Model Selection - Matching App Theme */
+.model-selection {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 100%;
+}
+
+.model-selection h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.model-dropdown select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px;
+  padding-right: 32px;
+}
+
+.model-dropdown select:focus {
+  outline: none;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+
+.model-dropdown select option {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  padding: 8px;
+}
+
+.login-btn {
+  padding: 12px 24px;
+  background-color: var(--accent-red);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.login-btn:hover:not(:disabled) {
+  background-color: var(--accent-red-hover);
+  transform: translateY(-1px);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Upload Section - Matching App Theme */
+.upload-section {
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 100%;
+}
+
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  background: var(--bg-tertiary);
+}
+
+.upload-area:hover,
+.upload-area.drag-over {
+  border-color: var(--accent-red);
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+.upload-icon {
+  font-size: 24px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.upload-area p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-top: 12px;
+}
+
+.file-icon {
+  color: var(--success-green);
+  font-size: 16px;
+}
+
+.file-size {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+/* Message Section - Matching App Theme */
+.message-section {
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 100%;
+}
+
+.message-section label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.message-section textarea {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.message-section textarea:focus {
+  outline: none;
+  border-color: var(--accent-red);
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
+}
+
+/* Processing Section */
+.processing-section {
+  margin-bottom: 16px;
+  max-width: 100%;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-red), #dc2626);
+  transition: width 0.3s ease;
+}
+
+.processing-section p {
+  margin: 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Button Container */
+.button-container {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+/* Process Button */
+.process-btn {
+  padding: 12px 24px;
+  background-color: var(--accent-red);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 200px;
+}
+
+.process-btn:hover:not(:disabled) {
+  background-color: var(--accent-red-hover);
+  transform: translateY(-1px);
+}
+
+.process-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Error Message */
+.error-message {
+  padding: 12px 16px;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger-red);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.poly-engine-login-form .error-message {
+  margin-top: 16px;
+}
+
+/* Animations */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design - Matching App Theme */
+@media (max-width: 768px) {
+  .poly-engine-content {
+    padding: 16px;
+  }
+  
+  .poly-engine-form {
+    max-width: 100%;
+    padding: 24px;
+  }
+  
+  .upload-section,
+  .message-section {
+    padding: 16px;
+  }
+  
+  .poly-engine-layout {
+    flex-direction: column;
+  }
+  
+  .poly-engine-logs {
+    width: 100%;
+    height: 300px;
+  }
+}
