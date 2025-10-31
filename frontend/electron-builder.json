@@ -24,7 +24,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "build/icon.icns"
+    "icon": "build/icon.png"
   },
   "win": {
     "target": [
@@ -37,7 +37,7 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "build/icon.ico",
+    "icon": "build/icon.png",
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "nsis": {
@@ -63,6 +63,7 @@
     ],
     "icon": "build/icon.png",
     "category": "Development",
+    "maintainer": "capabilities@redhex.net",
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "desktop": {
       "Name": "Ankou C2",
