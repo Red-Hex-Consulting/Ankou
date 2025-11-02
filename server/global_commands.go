@@ -46,11 +46,8 @@ func handleGlobalCommand(client *Client, msg map[string]interface{}) {
 	now := time.Now()
 
 	for _, agent := range agents {
-		// Translate command using handler mappings (if available)
-		translatedCommand := translateCommand(agent.ID, command)
-
 		result, err := db.Exec("INSERT INTO commands (agent_id, command, client_username, status, created_at) VALUES (?, ?, ?, ?, ?)",
-			agent.ID, translatedCommand, username, "pending", now)
+			agent.ID, command, username, "pending", now)
 		if err != nil {
 			log.Printf("Error inserting global command for agent %s: %v", agent.ID, err)
 			continue

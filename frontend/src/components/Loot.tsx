@@ -674,23 +674,32 @@ export default function Loot({ isActive }: LootProps) {
             window.removeEventListener('loot-file-response', handleFileContent);
             
             if (data.content) {
-              const blob = new Blob([data.content], { type: 'application/octet-stream' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = file.filename || 'loot-file';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+              try {
+                const binaryString = atob(data.content);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = file.filename || 'loot-file';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
 
-      setDownloadedFiles((prev) => {
-        const next = new Set(prev);
-        next.add(file.id);
-        return next;
-      });
+                setDownloadedFiles((prev) => {
+                  const next = new Set(prev);
+                  next.add(file.id);
+                  return next;
+                });
 
-              resolve();
+                resolve();
+              } catch (error) {
+                reject(new Error(`Failed to decode file content: ${error}`));
+              }
             } else {
               reject(new Error('No file content received'));
             }

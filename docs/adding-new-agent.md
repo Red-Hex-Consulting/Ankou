@@ -10,7 +10,7 @@ Use this guide when you need to stand up a fresh agent type and plumb it through
 Everything hinges on three configuration touch points:
 1. Shared HMAC secret
 2. HTTPS listener that the relay talks to
-3. Agent handler metadata so the server knows how to translate commands
+3. Agent handler metadata so the server knows supported commands
 
 ## 2. Align the Shared Secrets
 1. Start the server once so it generates `server/hmac.key`. You can also supply `HMAC_KEY` via environment variables at runtime (`server/main.go`).
@@ -52,12 +52,7 @@ Handlers live in `server/agent_handlers/` and let the server match an incoming a
      "id": "handler_myagent",
      "agentName": "myagent",
      "agentHttpHeaderId": "myagent",
-     "supportedCommands": ["ls", "exec", "reconnect"],
-     "commandMappings": {
-       "ls": "1",
-       "exec": "7",
-       "reconnect": "8"
-     }
+     "supportedCommands": ["ls", "exec", "reconnect"]
    }
    ```
 2. Field reference:
@@ -65,7 +60,6 @@ Handlers live in `server/agent_handlers/` and let the server match an incoming a
    - `agentName` – display name shown in the UI.
    - `agentHttpHeaderId` – lowercase identifier injected by the relay as `X-Agent-Type`; must match the relay binding in step 5.
    - `supportedCommands` – string list surfaced to operators (`server/agent_handlers.go` sanitizes for duplicates).
-   - `commandMappings` – optional map for translating UI commands to agent-native opcodes. When present, `translateCommand()` swaps the first token before the task is queued (`server/agent_handlers.go`).
    - `createdAt` – RFC3339 timestamp; purely informational.
 3. Restart the server or call the `upsertAgentHandler` GraphQL mutation with the same JSON so `loadAgentHandlersFromConfig()` (`server/agent_handlers.go`) registers it at runtime.
 
@@ -151,7 +145,7 @@ Once the relay is running, any request the agent makes through this transport ge
 1. Start/restart the server so it loads the new listener and handler.
 2. Launch the relay with `UPSTREAM_URL` in `relay.config` (or `GHOST_RELAY_UPSTREAM_BASE_URL` env var) set to the base C2 server URL (e.g., `https://c2.example.com:8444`) and the correct `SERVER_HMAC_KEY` matching the server's `HMAC_KEY`.
 3. Deploy the agent, confirm successful registration (`registerAgent` log on the server) and heartbeat updates (`server/main.go`).
-4. Run a test command from the operator UI, confirm it executes, and check translation if you rely on `commandMappings`.
+4. Run a test command from the operator UI and confirm it executes successfully.
 5. Inspect `loot/` for any artifacts captured by the agent (`server/loot.go` handles storage).
 
 With these pieces in place you can iterate on either side (new transports or new agent capabilities) without touching the rest of the system.

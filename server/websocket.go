@@ -156,13 +156,10 @@ func handleCommandSubmission(client *Client, msg map[string]interface{}) {
 		username = "reaper" // Default for backward compatibility
 	}
 
-	// Translate command using handler mappings (if available)
-	translatedCommand := translateCommand(agentID, command)
-
-	// Insert translated command into database
+	// Insert command into database
 	now := time.Now()
 	result, err := db.Exec("INSERT INTO commands (agent_id, command, client_username, status, created_at) VALUES (?, ?, ?, ?, ?)",
-		agentID, translatedCommand, username, "pending", now)
+		agentID, command, username, "pending", now)
 	if err != nil {
 		log.Printf("Error inserting command: %v", err)
 		client.WriteJSON(map[string]interface{}{

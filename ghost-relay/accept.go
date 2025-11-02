@@ -66,6 +66,7 @@ func sendToC2(ctx context.Context, endpoint string, headers map[string]string, b
 
 			if !hmac.Equal([]byte(agentWrapper.Signature), []byte(expectedSig)) {
 				logger.Printf("Ghost-relay: Agent HMAC validation FAILED for endpoint %s", endpoint)
+				return nil, fmt.Errorf("invalid agent HMAC signature")
 			}
 		}
 	}

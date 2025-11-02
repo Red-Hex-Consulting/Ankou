@@ -23,7 +23,7 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 ### 1. Modular Transports, Handlers & Custom Agents
 - Ghost Relay binds transports to agent families (e.g., QUIC → geist) and injects the minimal metadata (`X-Agent-Type`, HMAC headers) the server needs.
-- Add new handlers through JSON config (`server/agent_handlers/handler_*.json`). The UI instantly surfaces supported commands, and the server translates operator input to agent-native opcodes.
+- Add new handlers through JSON config (`server/agent_handlers/handler_*.json`). The UI instantly surfaces supported commands for operators to use.
 - Custom transport in mind? Follow the [ghost-relay new transport guide](docs/ghost-relay-new-transport.md) and you'll have a production-ready module in minutes.
 - All these features provide an easy way to build a custom agent under it all; once your transport is set, take a look at the current agents and build one around your new handler with whatever TTPs you love to use.
 

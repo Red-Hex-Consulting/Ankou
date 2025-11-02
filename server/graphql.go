@@ -640,11 +640,8 @@ func createSchema() (graphql.Schema, error) {
 					now := time.Now()
 
 					for _, agent := range agents {
-						// Translate command using handler mappings (if available)
-						translatedCommand := translateCommand(agent.ID, command)
-
 						_, err := db.Exec("INSERT INTO commands (agent_id, command, client_username, status, created_at) VALUES (?, ?, ?, ?, ?)",
-							agent.ID, translatedCommand, username, "pending", now)
+							agent.ID, command, username, "pending", now)
 						if err != nil {
 							continue
 						}

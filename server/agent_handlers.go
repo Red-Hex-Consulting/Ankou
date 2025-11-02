@@ -209,49 +209,6 @@ func getAgentHandlerByHeader(header string) (*AgentHandler, bool) {
 	return handler, ok
 }
 
-// translateCommand translates a command using the agent's handler mappings
-// If no mapping exists, returns the command as-is (passthrough)
-func translateCommand(agentID, command string) string {
-	// Get agent's handler
-	var handlerName string
-	err := db.QueryRow("SELECT handler_name FROM agents WHERE id = ?", agentID).Scan(&handlerName)
-	if err != nil {
-		// No handler or agent not found, pass through
-		return command
-	}
-
-	// Get handler
-	var handler *AgentHandler
-	for _, h := range agentHandlers {
-		if h.AgentName == handlerName {
-			handler = h
-			break
-		}
-	}
-
-	if handler == nil || handler.CommandMappings == nil {
-		// No handler or no mappings, pass through
-		return command
-	}
-
-	// Parse command to get the first word
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return command
-	}
-
-	cmdName := parts[0]
-
-	// Check if mapping exists
-	if mappedID, ok := handler.CommandMappings[cmdName]; ok {
-		// Replace command name with mapped ID
-		parts[0] = mappedID
-		return strings.Join(parts, " ")
-	}
-
-	// No mapping found, pass through
-	return command
-}
 
 func upsertAgentHandlerFromJSON(rawConfig string) (*AgentHandler, bool, error) {
 	var cfg agentHandlerConfig
