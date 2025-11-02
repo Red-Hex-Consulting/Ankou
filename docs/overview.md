@@ -25,90 +25,66 @@ Together, these four elements create a responsive C2 workflow while keeping sens
 
 ## Quickstart
 
-Each part of the stack bootstraps itself with sensible defaults. If you enter the directory for a component and run its default command (`go run .` for Go services, `npm run electron` for the desktop UI), the tooling will generate whatever files it needs and come up in a working development configuration. Bring the system online in the order below—Ghost Relay is mandatory for agent traffic.
+1. **Install golang** (latest version)
 
-### 1) Server
+2. **Run `quickstart.py`** from the repository root:
+   ```sh
+   python3 quickstart.py
+   ```
+   This generates all configuration files:
+   - `server/ankou.config` - Server secrets (JWT_SECRET, HMAC_KEY, REGISTRATION_KEY)
+   - `server/server_config.json` - Network bindings for operator and relay endpoints
+   - `ghost-relay/relay.config` - Relay configuration with matching HMAC keys
 
-- `cd server`
-- Launch with the built-in defaults and let it generate certificates/keys on first run:
+3. **Save the registration key** displayed by `quickstart.py` - you'll need it for first login. It's also stored in `server/ankou.config` as `REGISTRATION_KEY` if you need to retrieve it later.
 
-  ```sh
-  go run .
-  # or
-  go build && ./ankou-server -ip 0.0.0.0 -port 8443
-  ```
+4. **Start the ghost relay** (reads configuration from `ghost-relay/relay.config`):
+   ```sh
+   cd ghost-relay
+   go run .
+   # or
+   go build .
+   ```
 
-- What happens automatically:
-  - Binds to `0.0.0.0:8443` over HTTPS.
-  - Creates self-signed TLS material (`server.crt`, `server.key`) plus secrets (`jwt.secret`, `hmac.key`, `registration.key`) inside `server/` if they do not exist.
-  - Initializes the SQLite database (`agents.db`) and required tables.
-- Leave this process running; the other components will connect to it.
+5. **Start the C2 server** (reads configuration from `server/ankou.config` and `server/server_config.json`):
+   ```sh
+   cd server
+   go run .
+   # or
+   go build .
+   ```
+   What happens automatically:
+   - Binds to the operator interface specified in `server/server_config.json` (defaults to `0.0.0.0:8443` over HTTPS)
+   - Creates self-signed TLS material (`server.crt`, `server.key`) if they do not exist
+   - Initializes the SQLite database (`agents.db`) and required tables
 
----
+6. **Access the operator interface**:
+   - Open your browser to the operator URL shown by `quickstart.py` (default: `https://localhost:8443`)
+   - Accept the self-signed certificate warning
+   - Click **Register** and enter the registration key from step 3
+   - Choose a username/password
 
-### 2) Client
+7. **Create a listener** (still in the client):
+   - Open the **Listeners** view
+   - Click **Add Listener** and configure:
+     - Endpoint: Choose any endpoint path (e.g., `/api` or `/agent`)
+   - Save, then click **Start** to bring it online
+   - This listener exposes the endpoint for agent traffic coming from the relay
 
-- In a new terminal: `cd frontend`
-- Install dependencies and start the desktop app (the scripts handle the build step for you):
+8. **Update relay configuration** (if needed):
+   - If your listener endpoint differs from the default in `quickstart.py`, update `UPSTREAM_URL` in `ghost-relay/relay.config` to match
+   - Restart the relay to pick up changes
 
-  ```sh
-  npm install
-  npm run build
-  npm run electron
-  ```
+9. **Build and deploy agents**:
+   - Jump into any agent directory (e.g., `cd agents/phantasm`)
+   - Run the build script
+   - The build script will prompt for configuration values:
+     - Relay host/port (from `relay.config` or `quickstart.py` output)
+     - HMAC key (from `relay.config` AGENT_HMAC_KEY)
+     - Listener endpoint (the endpoint path you configured in step 7)
 
-- The launcher opens the login window. Use the defaults:
-  - Server URL: `https://localhost:8443` (matches the server you just started).
-  - First-time setup: click **Register**, copy the contents of `server/registration.key`, then choose a username/password. Subsequent logins use **Sign In** with the same URL.
-
----
-
-### 3) Listener
-
-- Still inside the client:
-  1. Open the **Listeners** view.
-  2. Click **Add Listener** and accept these defaults:
-     - Host: `0.0.0.0`
-     - Port: `8444`
-     - Endpoint: `/wiki`
-  3. Save, then immediately click **Start** to bring it online.
-- This listener exposes `https://<server>:8444/wiki` for agent traffic coming from the relay. The UI will show the listener status flip to **running** when it is ready.
-
----
-
-### 4) Ghost Relay (Required)
-
-- In a third terminal: `cd ghost-relay`
-- Point the relay at the listener you created and reuse the server’s HMAC key:
-
-  ```sh
-  export PHANTASM_RELAY_UPSTREAM_BASE_URL=https://localhost:8444
-  export RELAY_HMAC_KEY=$(cat ../server/hmac.key)
-  go run .
-  ```
-
-- What you get out of the box:
-  - Self-signed TLS for the relay endpoints (generated automatically on first launch).
-  - HTTPS handler (`phantasm`) listening on `127.0.0.1:8080`.
-  - QUIC handler (`geist`) listening on `127.0.0.1:8081`.
-  - Relay-to-server requests are re-signed with the shared HMAC key you exported.
-- The upstream URL defaults to `https://localhost:8444`; setting the variable explicitly helps if you later move the listener. The relay will automatically preserve the `/wiki` prefix defined in the listener step.
-- Keep the relay running so agents can connect. For remote testing, deploy it near the agent host or put it behind a reverse proxy.
-
----
-
-### 5) Agent
-
-- Sample agents live in `agents/<name>`. Each ships with defaults that match the quickstart environment:
-
-  ```sh
-  # Example: start the HTTPS-based Phantasm agent
-  cd agents/phantasm
-  go run .
-  ```
-
-- Out of the box the agent:
-  - Uses `https://127.0.0.1:8080/wiki` (the relay) as its transport.
-  - Shares the same HMAC key value embedded in `hmacKeyHex`—update that constant if you generated a new key earlier.
-  - Registers with the server, polls for tasks, executes them, and sends responses back through the relay. The relay forwards everything to the listener you created.
-- Repeat with other agent binaries as needed (e.g., `agents/geist` for QUIC).
+> **Need more detail?** Consult the full guides:
+> - [Configuration Notes](configuration.md)
+> - [Adding a New Agent, Handler, and Listener](adding-new-agent.md)
+> - [Ghost Relay: Adding a New Transport](ghost-relay-new-transport.md)
+> - [Agent Catalog](agents.md)
