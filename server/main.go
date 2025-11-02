@@ -61,11 +61,10 @@ type Listener struct {
 }
 
 type AgentHandler struct {
-	ID                string            `json:"id"`
-	AgentName         string            `json:"agentName"`
-	AgentHeaderID     string            `json:"agentHttpHeaderId"`
-	SupportedCommands []string          `json:"supportedCommands"`
-	CommandMappings   map[string]string `json:"commandMappings"`
+	ID                string   `json:"id"`
+	AgentName         string   `json:"agentName"`
+	AgentHeaderID     string   `json:"agentHttpHeaderId"`
+	SupportedCommands []string `json:"supportedCommands"`
 }
 
 type AgentRegistration struct {
@@ -1295,8 +1294,8 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 	if agentID != "" && response.Status == "completed" {
 		var command string
 		if err := db.QueryRow("SELECT command FROM commands WHERE id = ?", response.CommandID).Scan(&command); err == nil {
-			// Check if command is "reconnect" or "8" (translated)
-			if strings.HasPrefix(command, "reconnect ") || strings.HasPrefix(command, "8 ") {
+			// Check if command is "reconnect"
+			if strings.HasPrefix(command, "reconnect ") {
 				// Parse the new interval from the output
 				// Expected format: "Reconnect interval changed from X to Y seconds"
 				if strings.Contains(response.Output, "changed from") && strings.Contains(response.Output, "to") {

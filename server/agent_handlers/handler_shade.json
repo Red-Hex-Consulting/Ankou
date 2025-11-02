@@ -17,21 +17,5 @@
     "haunt",
     "haunts",
     "haunt-kill"
-  ],
-  "commandMappings": {
-    "ls": "1",
-    "get": "2",
-    "put": "3",
-    "cd": "4",
-    "kill": "5",
-    "ps": "6",
-    "exec": "7",
-    "reconnect": "8",
-    "rm": "9",
-    "rmdir": "10",
-    "jitter": "11",
-    "haunt": "12",
-    "haunts": "13",
-    "haunt-kill": "14"
-  }
+  ]
 }
