@@ -47,10 +47,12 @@ Create `server/server_config.json`:
 Create `ghost-relay/relay.config`:
 ```bash
 UPSTREAM_URL=https://127.0.0.1:8444
-AGENT_HMAC_KEY=<same 64-char hex as server HMAC_KEY>
+AGENT_HMAC_KEY=<64-char hex string - shared with agents>
 SERVER_HMAC_KEY=<same 64-char hex as server HMAC_KEY>
 LISTEN_ADDR=0.0.0.0
 ```
+
+**Note:** The `UPSTREAM_URL` should be the base C2 server URL without any listener endpoint path. The relay appends the listener endpoint (e.g., `/wiki`) automatically when forwarding requests.
 
 ### Agent Configuration
 
@@ -62,7 +64,7 @@ Before building agents, update their `main.go` files:
 **Critical HMAC alignment:**
 - Agent `hmacKeyHex` must match relay's `AGENT_HMAC_KEY` (agent → relay authentication)
 - Relay's `SERVER_HMAC_KEY` must match server's `HMAC_KEY` (relay → server authentication)
-- Note: `quickstart.py` sets all three to the same value for simplicity, but they could theoretically differ
+- `quickstart.py` generates separate keys: `AGENT_HMAC_KEY` (for agent→relay) is different from `SERVER_HMAC_KEY` (for relay→server), which matches the server's `HMAC_KEY`
 
 ## Key Rotation
 

@@ -16,7 +16,7 @@ Everything hinges on three configuration touch points:
 1. Start the server once so it generates `server/hmac.key`. You can also supply `HMAC_KEY` via environment variables at runtime (`server/main.go`).
 2. Copy that same hex value into the relay and the agent:
    - Relay: export `RELAY_HMAC_KEY` before launching (`ghost-relay/internal/config/config.go`).
-   - Agent: set the `hmacKeyHex` constant in your agent’s config block (see `agents/geist/main.go`).
+   - Agent: set the `hmacKeyHex` constant in your agent's config block (see `agents/geist/main.go`).
 3. If you regenerate the key later, restart the server, relay, and rebuild the agent with the new value so everyone agrees.
 
 ## 3. Provision an HTTPS Listener
@@ -39,9 +39,9 @@ The server only accepts agent traffic on listeners. You can create one through t
 - Fields map directly to the `Listener` struct (`server/main.go`). Only `https` is supported today (`server/listeners.go`).
 - Always normalize the endpoint with a leading slash. The helper in `server/listeners.go` shows the accepted formats.
 - After creating the file, either restart the server or trigger `createListener` via GraphQL so `loadListenersFromConfig()` (`server/listeners.go`) picks it up.
-- Start the listener (UI: “Start”; CLI: GraphQL `startListener` mutation). It will listen with the TLS certificate created in step 2.
+- Start the listener (UI: "Start"; CLI: GraphQL `startListener` mutation). It will listen with the TLS certificate created in step 2.
 
-The relay’s `PHANTASM_RELAY_UPSTREAM_BASE_URL` must point at this listener, e.g. `https://c2.example.com:8444/wiki`.
+The relay's `UPSTREAM_URL` (in `relay.config`) or `GHOST_RELAY_UPSTREAM_BASE_URL` environment variable must point at the base C2 server URL (without the listener endpoint), e.g. `https://c2.example.com:8444`. The relay will automatically append the listener endpoint path (e.g., `/wiki`) when forwarding requests.
 
 ## 4. Register an Agent Handler
 Handlers live in `server/agent_handlers/` and let the server match an incoming agent to a feature set.
@@ -98,10 +98,10 @@ Use the existing agents as blueprints. Even if you introduce a new transport, th
      "reconnectInterval": <seconds>
    }
    ```  
-   Dispatch this payload through your transport to the relay’s `/api/register` route and verify a 200 response before proceeding.
+   Dispatch this payload through your transport to the relay's `/api/register` route and verify a 200 response before proceeding.
 
 4. **Implement the beacon loop**  
-   Use the reconnect interval plus jitter to control your polling cadence. Geist’s `subscribeToCommands()` calculates a new jittered duration for each loop, then calls `getPendingCommands()` which issues a signed request to `/api/poll`. The relay forwards the call, the server updates heartbeat timestamps, and returns an array of pending commands. Follow this pattern so reconnect updates from operators propagate automatically.
+   Use the reconnect interval plus jitter to control your polling cadence. Geist's `subscribeToCommands()` calculates a new jittered duration for each loop, then calls `getPendingCommands()` which issues a signed request to `/api/poll`. The relay forwards the call, the server updates heartbeat timestamps, and returns an array of pending commands. Follow this pattern so reconnect updates from operators propagate automatically.
 
 5. **Map supported commands to execution logic**  
    `supportedCommands` in the handler config advertises capabilities to the UI, so your agent must honour each verb. Geist routes commands through `handleBuiltinCommand()` and exposes helpers such as `handleLs`, `handlePut`, and `handleExec`. Replicate that structure: parse the command string, dispatch to the correct implementation, and return stdout/stderr plus any metadata (loot entries, hashes, status strings).
@@ -109,12 +109,12 @@ Use the existing agents as blueprints. Even if you introduce a new transport, th
 6. **Send command responses (and loot) back upstream**  
    Wrap the results in the `CommandResponse` schema (`commandId`, `output`, `status`). For file transfers or directory listings that surface loot, set the `type` header to `loot` and provide a JSON payload in `loot-data`; the relay copies both into the HTTPS request so `server/main.go` can archive the entries. Ensure each response is HMAC-signed with the same procedure used during registration and polling.
 
-> **Heads-up:** Many agents will never open a direct HTTPS connection to the C2 server. Instead, they speak their native protocol to a relay handler which performs the HTTP translation and HMAC signing on their behalf. Geist’s QUIC client is one example, but the same pattern applies to DNS, ICMP, or any custom module you add under `ghost-relay/internal/accept/`.
+> **Heads-up:** Many agents will never open a direct HTTPS connection to the C2 server. Instead, they speak their native protocol to a relay handler which performs the HTTP translation and HMAC signing on their behalf. Geist's QUIC client is one example, but the same pattern applies to DNS, ICMP, or any custom module you add under `ghost-relay/internal/accept/`.
 
 Build the agent with `go build ./agents/myagent` and ship the resulting binary with the correct config values baked in.
 
 ## 6. Bind the Agent in the Ghost Relay (Only for New Transports)
-If your agent can reuse an existing relay transport (HTTPS/Phantasm, HTTP/3 QUIC/Geist, SSH/Shade, SMB/WebSocket/Wraith), simply point that handler at your new `AgentType` and skip to verification. Only build a new `accept_*.go` module when you introduce a protocol the relay does not already support. If you’re in that situation, follow the detailed recipe in [docs/ghost-relay-new-transport.md](ghost-relay-new-transport.md).
+If your agent can reuse an existing relay transport (HTTPS/Phantasm, HTTP/3 QUIC/Geist, SSH/Shade, SMB/WebSocket/Wraith), simply point that handler at your new `AgentType` and skip to verification. Only build a new `accept_*.go` module when you introduce a protocol the relay does not already support. If you're in that situation, follow the detailed recipe in [docs/ghost-relay-new-transport.md](ghost-relay-new-transport.md).
 
 When you do need a fresh transport, copy the pattern from `ghost-relay/accept_geist.go`:
 
@@ -139,7 +139,7 @@ func setupMyAgentHandler(ctx context.Context, tlsConfig *tls.Config) {
 }
 ```
 
-- The `AgentType` here must match the handler’s `agentHttpHeaderId`.
+- The `AgentType` here must match the handler's `agentHttpHeaderId`.
 - For HTTP-family transports you can call `BaseHandler.RegisterEndpoints()` to expose `/api/register`, `/api/poll`, etc. automatically (`ghost-relay/internal/accept/base.go`).
 - Register your new setup function inside `setupAcceptHandlers()` (`ghost-relay/accept.go`).
 
@@ -149,7 +149,7 @@ Once the relay is running, any request the agent makes through this transport ge
 
 ## 7. Verify End-to-End
 1. Start/restart the server so it loads the new listener and handler.
-2. Launch the relay with `PHANTASM_RELAY_UPSTREAM_BASE_URL` targeting the listener and the correct `RELAY_HMAC_KEY`.
+2. Launch the relay with `UPSTREAM_URL` in `relay.config` (or `GHOST_RELAY_UPSTREAM_BASE_URL` env var) set to the base C2 server URL (e.g., `https://c2.example.com:8444`) and the correct `SERVER_HMAC_KEY` matching the server's `HMAC_KEY`.
 3. Deploy the agent, confirm successful registration (`registerAgent` log on the server) and heartbeat updates (`server/main.go`).
 4. Run a test command from the operator UI, confirm it executes, and check translation if you rely on `commandMappings`.
 5. Inspect `loot/` for any artifacts captured by the agent (`server/loot.go` handles storage).

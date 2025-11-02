@@ -24,24 +24,24 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 ### 1. Modular Transports, Handlers & Custom Agents
 - Ghost Relay binds transports to agent families (e.g., QUIC → geist) and injects the minimal metadata (`X-Agent-Type`, HMAC headers) the server needs.
 - Add new handlers through JSON config (`server/agent_handlers/handler_*.json`). The UI instantly surfaces supported commands, and the server translates operator input to agent-native opcodes.
-- Custom transport in mind? Follow the [ghost-relay new transport guide](docs/ghost-relay-new-transport.md) and you’ll have a production-ready module in minutes.
+- Custom transport in mind? Follow the [ghost-relay new transport guide](docs/ghost-relay-new-transport.md) and you'll have a production-ready module in minutes.
 - All these features provide an easy way to build a custom agent under it all; once your transport is set, take a look at the current agents and build one around your new handler with whatever TTPs you love to use.
 
 ### 2. Human-in-the-Loop AI Companion
-- The client’s **AI Operations** panel communicates with your OpenWebUI instance so all target data stays on hosts you control.
+- The client's **AI Operations** panel communicates with your OpenWebUI instance so all target data stays on hosts you control.
 - Plug in your favorite local or self-hosted LLM; the assistant ingests the full history of command output, builds a shared understanding of the target, and can summarize results, flag anomalies, draft follow-on commands, or watch for notable artifacts while you remain in full control.
 - Guided workflows help less experienced operators learn the rhythm of an engagement: the assistant explains context, proposes vetted commands, suggests decision trees, and highlights common next moves. Veteran operators can focus on higher-level strategy, using AI to sift noisy telemetry, compare hosts, or spot pivot points in seconds.
 - Click-to-run recommendations (using `<cmdankou>` tags) let you execute AI-suggested commands straight from the chat, keeping operations quick yet auditable.
 - The Poly Engine view lets you feed raw loot or binaries through the same OpenWebUI backend for automated triage, detonation scripting, or rapid reverse-engineering notes.
-- Because everything is proxied through OpenWebUI, you can experiment with different models without touching Ankou’s core code—great for testing new LLMs, keeping models aligned with mission policy, or swapping to air-gapped models mid-operation.
+- Because everything is proxied through OpenWebUI, you can experiment with different models without touching Ankou's core code—great for testing new LLMs, keeping models aligned with mission policy, or swapping to air-gapped models mid-operation.
 
 ![AI Operations Panel](docs/src/AiAgent1.png)
 
 ![AI Decision Support](docs/src/AiAgent2.png)
 
 ### 3. AI-Assisted Binary Diversification
-- Ankou’s agent build system includes hooks for polymorphic compilation, allowing you to produce campaign-specific binaries with randomized traits.
-- Diversification logic integrates with command mappings so operators don’t need to learn per-variant quirks—tasking stays consistent while binaries look unique on disk.
+- Ankou's agent build system includes hooks for polymorphic compilation, allowing you to produce campaign-specific binaries with randomized traits.
+- Diversification logic integrates with command mappings so operators don't need to learn per-variant quirks—tasking stays consistent while binaries look unique on disk.
 
 ![Poly Engine Workspace](docs/src/polyengine.png)
 
@@ -64,11 +64,11 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 ---
 
-## Quickstart (Everything “Just Works”)
+## Quickstart (Everything "Just Works")
 
 - Install the latest version of golang
 - Run quickstart.py
-- Note your registration key and the agent HMAC key you will find the HMAC key for your agents in ghost-relay/relay.config with clear marking, you will need it to build an agent
+- Note your registration key and the agent HMAC key (both are printed in green by quickstart.py; you can also find the agent HMAC key in `ghost-relay/relay.config` as `AGENT_HMAC_KEY` - you will need it to build an agent)
 - Run or build ghostrelay
 
 ```sh
@@ -89,7 +89,7 @@ go run .
 go build .
 ```
 
-- Jump into any agent directory and run the build script, fill out the requested feilds in accordance with your relay and C2 setup.
+- Jump into any agent directory and run the build script, fill out the requested fields in accordance with your relay and C2 setup.
 
 
 
@@ -138,7 +138,7 @@ See [frontend/BUILD.md](frontend/BUILD.md) for detailed build instructions, trou
 
 ## Roadmap & Contributions
 
-We’re actively iterating on:
+We're actively iterating on:
 - **Geist, Shade and Phantasm** to make them more feature complete and easier to extend.
 - **Better agentic excution** to make your life easier.
 - **More C2 protocol support out of the box** so you can use more of our stuff as templates to make awesome tools.
@@ -179,4 +179,3 @@ By using this software, you agree to comply with all applicable laws and regulat
 ---
 
 **Stay stealthy, stay modular.** Ankou keeps your operations agile while letting you experiment with the latest tradecraft, AI workflows, and transport mechanisms—all without leaving your own infrastructure.
-

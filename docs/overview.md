@@ -72,8 +72,8 @@ Together, these four elements create a responsive C2 workflow while keeping sens
    - This listener exposes the endpoint for agent traffic coming from the relay
 
 8. **Update relay configuration** (if needed):
-   - If your listener endpoint differs from the default in `quickstart.py`, update `UPSTREAM_URL` in `ghost-relay/relay.config` to match
-   - Restart the relay to pick up changes
+   - The `UPSTREAM_URL` in `ghost-relay/relay.config` should be the base C2 server URL (e.g., `https://127.0.0.1:8444`) without the listener endpoint. The relay automatically appends the listener endpoint path when forwarding requests.
+   - If your setup differs from the default, update `UPSTREAM_URL` accordingly and restart the relay to pick up changes
 
 9. **Build and deploy agents**:
    - Jump into any agent directory (e.g., `cd agents/phantasm`)
