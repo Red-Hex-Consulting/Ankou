@@ -1349,53 +1349,13 @@ func handleHauntKill(args []string) (string, error) {
 	return fmt.Sprintf("Tunnel killed: %s", tunnelID), nil
 }
 
-func decodeCommand(command string) string {
-	commandMap := map[string]string{
-		"1":  "ls",
-		"2":  "get",
-		"3":  "put",
-		"4":  "cd",
-		"5":  "kill",
-		"6":  "ps",
-		"7":  "exec",
-		"8":  "reconnect",
-		"9":  "rm",
-		"10": "rmdir",
-		"11": "jitter",
-		"12": "haunt",
-		"13": "haunts",
-		"14": "haunt-kill",
-	}
-
-	spaceIdx := strings.IndexAny(command, " \t")
-	var cmdID string
-	var rest string
-
-	if spaceIdx == -1 {
-		cmdID = command
-		rest = ""
-	} else {
-		cmdID = command[:spaceIdx]
-		rest = command[spaceIdx:]
-	}
-
-	if cmdName, ok := commandMap[cmdID]; ok {
-		return cmdName + rest
-	}
-
-	return command
-}
-
 func executeCommand(command string) (string, error) {
 	if command == "" {
 		return "", fmt.Errorf("empty command")
 	}
 
-	// Decode command ID to command name (if encoded)
-	decodedCommand := decodeCommand(command)
-
 	// Check if it's a builtin command first
-	output, err := handleBuiltinCommand(decodedCommand)
+	output, err := handleBuiltinCommand(command)
 	if err == nil {
 		return output, nil
 	}
@@ -1407,7 +1367,7 @@ func executeCommand(command string) (string, error) {
 
 	// Use system() for full command execution (supports pipes, redirects, etc.)
 	// Execute command using sh
-	cmd := exec.Command("sh", "-c", decodedCommand)
+	cmd := exec.Command("sh", "-c", command)
 	systemOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(systemOutput), err
