@@ -1,0 +1,30 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# Build outputs
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+/src/test.txt
+/src/test.bin
+/src/bin/test_*.rs
+
+# Build configuration (contains secrets)
+build_config.env
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug
+debug/
+*.pdb
+
