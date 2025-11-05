@@ -1,5 +1,5 @@
 [package]
-name = "poltergeist"
+name = "geist"
 version = "0.1.0"
 edition = "2021"
 
@@ -29,9 +29,6 @@ windows = { version = "0.58", features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
 ] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
 
 [profile.release]
 opt-level = "z"

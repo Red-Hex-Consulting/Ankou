@@ -1,17 +1,11 @@
-// String obfuscation using compile-time XOR encryption
-// This prevents static strings from appearing in the binary
+const XOR_KEY: u8 = 0x7A;
 
-/// Deobfuscate bytes at runtime
 #[inline(always)]
-#[allow(dead_code)]
 pub fn deobfuscate(input: &[u8]) -> String {
-    const XOR_KEY: u8 = 0x7A;
     let decoded: Vec<u8> = input.iter().map(|b| b ^ XOR_KEY).collect();
     String::from_utf8_lossy(&decoded).to_string()
 }
 
-/// Macro to obfuscate a string literal at compile time
-/// Usage: obfstr!("my secret string")
 #[macro_export]
 macro_rules! obfstr {
     ($s:literal) => {{
@@ -32,8 +26,4 @@ macro_rules! obfstr {
         $crate::obfuscate::deobfuscate(&ENCRYPTED)
     }};
 }
-
-// Example usage:
-// let host = obfstr!("localhost");
-// let port = obfstr!("8081");
 
