@@ -2,6 +2,7 @@
 
 mod obfuscate;
 mod inject;
+mod gatesofhell;
 
 use std::collections::HashMap;
 use std::env;

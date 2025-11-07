@@ -19,6 +19,7 @@ Thumbs.db
 *.so
 *.dylib
 *.dll
+build_config.env
 
 # Debug
 debug/
