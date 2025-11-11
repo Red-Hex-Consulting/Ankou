@@ -11,6 +11,7 @@ import { FaUserSecret, FaPlay, FaCheckCircle, FaExclamationTriangle, FaSpinner, 
 import ReactMarkdown from "react-markdown";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
+import { useServerUrl } from "../contexts/ServerContext";
 import "./AI.css";
 
 interface AIProps {
@@ -82,7 +83,6 @@ interface AgentChatTab {
   error: string | null;
 }
 
-const GRAPHQL_ENDPOINT = "https://localhost:8443/graphql";
 const CONVERSATION_STORAGE_KEY = "openwebui_agent_conversations";
 const CHAT_TABS_STORAGE_KEY = "openwebui_agent_chat_tabs";
 const ACTIVE_TAB_STORAGE_KEY = "openwebui_agent_active_tab";
@@ -726,6 +726,7 @@ const saveActiveTab = (tabId: string | null) => {
 
 export default function AI({ isActive }: AIProps) {
   const { user } = useAuth();
+  const { serverUrl } = useServerUrl();
   const [url, setUrl] = useState("");
   const [jwt, setJwt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -901,7 +902,8 @@ export default function AI({ isActive }: AIProps) {
 
   const fetchGraphQL = useCallback(
     async (query: string, variables: Record<string, unknown> = {}) => {
-      const response = await fetch(GRAPHQL_ENDPOINT, {
+      const graphqlEndpoint = `${serverUrl}/graphql`;
+      const response = await fetch(graphqlEndpoint, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -921,7 +923,7 @@ export default function AI({ isActive }: AIProps) {
 
       return result.data;
     },
-    []
+    [serverUrl]
   );
 
   const loadAgents = useCallback(async () => {
