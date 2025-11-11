@@ -63,7 +63,7 @@ class WebSocketManager {
     return WebSocketManager.instance;
   }
 
-  connect(serverUrl: string = 'https://localhost:8443') {
+  connect(serverUrl: string) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       return; // Already connected
     }
