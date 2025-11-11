@@ -634,8 +634,7 @@ export default function Loot({ isActive }: LootProps) {
     }
 
     const escapedPath = sourcePath.replace(/"/g, '\\"');
-    const needsQuoting = /\s/.test(escapedPath);
-    const command = needsQuoting ? `get "${escapedPath}"` : `get ${escapedPath}`;
+    const command = `get "${escapedPath}"`;
 
     setCollectingFiles(prev => {
       const next = new Set(prev);
@@ -764,7 +763,8 @@ export default function Loot({ isActive }: LootProps) {
     }
     
     if (directoryPath) {
-      const command = `ls ${directoryPath}`;
+      const escapedPath = directoryPath.replace(/"/g, '\\"');
+      const command = `ls "${escapedPath}"`;
       
       // Track directory exploration
       setExploringDirectories(prev => {
@@ -934,7 +934,8 @@ export default function Loot({ isActive }: LootProps) {
                     // Handle directory exploration
                     if (file.fileType === 'directory') {
                       const directoryPath = file.originalPath || file.storedPath || file.filename;
-                      const command = `ls ${directoryPath}`;
+                      const escapedPath = directoryPath.replace(/"/g, '\\"');
+                      const command = `ls "${escapedPath}"`;
                       
                       // Track directory exploration
                       setExploringDirectories(prev => {

@@ -1,0 +1,31 @@
+package main
+
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+
+	"ghost-relay/internal/accept"
+)
+
+// setupAnomalyHandler configures and starts the HTTPS handler for anomaly agents
+func setupAnomalyHandler(ctx context.Context, tlsConfig *tls.Config) {
+	anomalyConfig := &accept.HandlerConfig{
+		UpstreamURL:      cfg.UpstreamBaseURL.String(),
+		Timeout:          int(cfg.ClientTimeout.Seconds()),
+		InsecureTLS:      cfg.InsecureSkipVerify,
+		RequestReadLimit: cfg.RequestReadLimit,
+		AgentType:        "anomaly", // Protocol binding: HTTPS = anomaly
+	}
+
+	httpsHandler := accept.NewHTTPSHandler(sendToC2, logger, anomalyConfig, tlsConfig)
+
+	bindAddr := fmt.Sprintf("%s:8082", cfg.ListenAddr)
+	go func() {
+		if err := httpsHandler.Start(ctx, bindAddr); err != nil {
+			logger.Printf("Anomaly HTTPS handler error: %v", err)
+		}
+	}()
+
+	logger.Printf("[+] Registered anomaly agent (HTTPS on %s)", bindAddr)
+}

