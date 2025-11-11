@@ -96,9 +96,10 @@ const sourceDir = __dirname;
 const outputDir = path.join(__dirname, 'app');
 const buildDir = path.join(__dirname, 'build', 'Release');
 
-// Random metadata
+// Random metadata, consider feeding this into poly engine :)
 const names = ['dev-helper', 'code-tool', 'app-manager', 'system-util', 'data-sync'];
-const authors = ['Alex Smith', 'Jordan Lee', 'Taylor Brown', 'Morgan Davis', 'Casey Wilson'];
+const firstNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey'];
+const lastNames = ['Smith', 'Lee', 'Brown', 'Davis', 'Wilson'];
 const descriptions = [
     'A utility for system management',
     'Development helper tool',
@@ -109,6 +110,10 @@ const licenses = ['MIT', 'Apache-2.0', 'ISC', 'BSD-3-Clause'];
 
 function randomChoice(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randomAuthor() {
+    return `${randomChoice(firstNames)} ${randomChoice(lastNames)}`;
 }
 
 function randomVersion() {
@@ -211,7 +216,7 @@ const pkgData = {
     version: randomVersion(),
     description: randomChoice(descriptions),
     main: 'main.js',
-    author: randomChoice(authors),
+    author: randomAuthor(),
     license: randomChoice(licenses),
     keywords: ['utility', 'tool', 'helper'],
     engines: {
@@ -232,7 +237,6 @@ console.log('    Output directory: ./app');
     console.log('==========================================');
 }
 
-// Run the main function
 main().catch(err => {
     console.error('[!] Build failed:', err.message);
     process.exit(1);
