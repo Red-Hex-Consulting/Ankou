@@ -11,6 +11,7 @@
     "ps",
     "exec",
     "reconnect",
+    "injectsc",
     "rm",
     "rmdir",
     "jitter"

@@ -4,14 +4,25 @@
   "description": "Anomaly C2 Agent for Ankou",
   "main": "main.js",
   "scripts": {
-    "start": "node main.js"
+    "start": "node main.js",
+    "build": "node build-payload.js",
+    "build:addon": "node-gyp rebuild",
+    "install": "node-gyp rebuild"
   },
   "keywords": ["c2", "agent", "anomaly"],
   "author": "",
   "license": "MIT",
   "engines": {
     "node": ">=14.0.0"
-  }
+  },
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  },
+  "devDependencies": {
+    "node-gyp": "^10.0.0",
+    "javascript-obfuscator": "^4.0.0"
+  },
+  "gypfile": true
 }
 
 

