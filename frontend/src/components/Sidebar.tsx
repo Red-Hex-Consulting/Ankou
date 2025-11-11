@@ -19,7 +19,7 @@ const sidebarItems = [
   { id: "agents", label: "Agents", icon: RiSkull2Fill },
   { id: "terminal", label: "Global Commands", icon: GiOctopus },
   { id: "loot", label: "Loot", icon: FaDatabase },
-  { id: "ai", label: "AI", icon: SiOllama },
+  { id: "ai", label: "AI Chat", icon: SiOllama },
   { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
   { id: "listeners", label: "Listeners", icon: LuRadioTower },
   { id: "handlers", label: "Handlers", icon: FaProjectDiagram },

@@ -110,9 +110,10 @@ func setupAcceptHandlers(ctx context.Context) error {
 	setupPhantasmHandler(ctx, tlsConfig) // accept_phantasm.go
 	setupGeistHandler(ctx, tlsConfig)    // accept_geist.go
 	setupShadeHandler(ctx)               // accept_shade.go (SSH, no TLS needed)
+	setupAnomalyHandler(ctx, tlsConfig)  // accept_anomaly.go
 
 	logger.Printf("=================================================================")
-	logger.Printf("Ghost Relay ready - %d agent types registered", 3)
+	logger.Printf("Ghost Relay ready - %d agent types registered", 4)
 	logger.Printf("=================================================================")
 
 	return nil

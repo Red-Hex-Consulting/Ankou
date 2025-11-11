@@ -1,0 +1,17 @@
+{
+  "name": "anomaly-agent",
+  "version": "1.0.0",
+  "description": "Anomaly C2 Agent for Ankou",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "keywords": ["c2", "agent", "anomaly"],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
+
+

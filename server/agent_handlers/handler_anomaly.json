@@ -1,0 +1,19 @@
+{
+  "id": "handler_anomaly",
+  "agentName": "anomaly",
+  "agentHttpHeaderId": "anomaly",
+  "supportedCommands": [
+    "ls",
+    "get",
+    "put",
+    "cd",
+    "kill",
+    "ps",
+    "exec",
+    "reconnect",
+    "rm",
+    "rmdir",
+    "jitter"
+  ]
+}
+
