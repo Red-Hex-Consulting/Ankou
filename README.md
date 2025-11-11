@@ -139,7 +139,8 @@ See [frontend/BUILD.md](frontend/BUILD.md) for detailed build instructions, trou
 ## Roadmap & Contributions
 
 We're actively iterating on:
-- **Geist, Shade and Phantasm** to make them more feature complete and easier to extend.
+- **Rust agent integration for Geist and Phantasm** to make them smaller and deadlier right out of the box
+- **Golang base templates for Geist, Shade and Phantasm** to make them more feature complete and easier to extend.
 - **Better agentic excution** to make your life easier.
 - **More C2 protocol support out of the box** so you can use more of our stuff as templates to make awesome tools.
 
@@ -151,7 +152,7 @@ Open a GitHub issue with feature suggestions or rough concepts—we prioritize i
 ## FAQ
 
 **Q: My agent registration request returns HTTP 502. What did I miss?**  
-A: The listener is paused. Open the desktop client, go to **Listeners**, find the listener the agent should use, and click **Resume**. Once the listener shows as running, registration will succeed.
+A: The listener is paused. Open the desktop client, go to **Listeners**, find the listener the agent should use, and click **Resume**. Once the listener shows as running, registration will succeed. If this is not the case you may have built your agent without a leading slash in front of the endpoint.
 
 **Q: How can I leave feedback or suggest features?**  
 A: Create a GitHub issue. Be as detailed as possible—screenshots, logs, or workflow descriptions help us prioritize and respond quickly.
