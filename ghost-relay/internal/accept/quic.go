@@ -47,6 +47,13 @@ func (q *QUICHandler) Start(ctx context.Context, addr string) error {
 		}
 	}()
 
+	// Wait for context cancellation and shutdown gracefully
+	go func() {
+		<-ctx.Done()
+		q.Logger().Printf("[quic:%s] Context cancelled, shutting down", q.AgentType())
+		q.Stop()
+	}()
+
 	return nil
 }
 

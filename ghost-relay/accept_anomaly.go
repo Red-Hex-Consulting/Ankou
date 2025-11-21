@@ -27,5 +27,8 @@ func setupAnomalyHandler(ctx context.Context, tlsConfig *tls.Config) {
 		}
 	}()
 
+	// Register handler for proper shutdown
+	handlers = append(handlers, httpsHandler)
+
 	logger.Printf("[+] Registered anomaly agent (HTTPS on %s)", bindAddr)
 }

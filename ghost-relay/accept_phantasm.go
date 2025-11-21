@@ -27,5 +27,8 @@ func setupPhantasmHandler(ctx context.Context, tlsConfig *tls.Config) {
 		}
 	}()
 
+	// Register handler for proper shutdown
+	handlers = append(handlers, httpsHandler)
+
 	logger.Printf("[+] Registered phantasm agent (HTTPS on %s)", bindAddr)
 }

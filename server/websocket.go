@@ -10,14 +10,17 @@ import (
 
 // Client wraps a websocket connection with a mutex for safe concurrent writes
 type Client struct {
-	conn  *websocket.Conn
-	mutex sync.Mutex
+	conn     *websocket.Conn
+	mutex    sync.Mutex
+	lastPong time.Time
 }
 
 // WriteJSON safely writes JSON to the websocket connection
 func (c *Client) WriteJSON(v interface{}) error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
+	// Set write deadline to prevent hanging writes
+	c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return c.conn.WriteJSON(v)
 }
 
@@ -26,6 +29,20 @@ func (c *Client) Close() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	return c.conn.Close()
+}
+
+// UpdatePong updates the last pong timestamp
+func (c *Client) UpdatePong() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.lastPong = time.Now()
+}
+
+// IsAlive checks if the connection is still alive (received pong within timeout)
+func (c *Client) IsAlive(timeout time.Duration) bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return time.Since(c.lastPong) < timeout
 }
 
 func broadcastAgents() {

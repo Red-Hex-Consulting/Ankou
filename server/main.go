@@ -779,6 +779,22 @@ func main() {
 		}
 	}()
 
+	// Start periodic cleanup of stale WebSocket connections (every 30 seconds)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			staleTimeout := 90 * time.Second // Close connections with no pong for 90 seconds
+			for client := range clients {
+				if !client.IsAlive(staleTimeout) {
+					log.Printf("Closing stale WebSocket connection (no pong for >90s)")
+					client.Close()
+					delete(clients, client)
+				}
+			}
+		}
+	}()
+
 	// Generate TLS certificates if they don't exist
 	if err := generateSelfSignedCert(); err != nil {
 		log.Fatalf("Failed to generate TLS certificates: %v", err)
@@ -1880,6 +1896,14 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Limit maximum concurrent WebSocket connections to prevent resource exhaustion
+	const maxClients = 100
+	if len(clients) >= maxClients {
+		log.Printf("WebSocket connection limit reached (%d), rejecting connection from %s", maxClients, r.RemoteAddr)
+		http.Error(w, "Server at capacity", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -1888,9 +1912,43 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Wrap the connection in a Client for thread-safe writes
-	client := &Client{conn: conn}
+	client := &Client{conn: conn, lastPong: time.Now()}
 	clients[client] = true
 	defer delete(clients, client)
+
+	// Configure ping/pong handlers for connection health checks
+	const (
+		pongWait   = 60 * time.Second    // Time allowed to read pong from client
+		pingPeriod = (pongWait * 9) / 10 // Send pings at this interval (54 seconds)
+		writeWait  = 10 * time.Second    // Time allowed to write a message
+	)
+
+	// Set read deadline and pong handler
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		client.UpdatePong()
+		return nil
+	})
+
+	// Start ping sender goroutine
+	pingTicker := time.NewTicker(pingPeriod)
+	defer pingTicker.Stop()
+
+	go func() {
+		for range pingTicker.C {
+			client.mutex.Lock()
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				client.mutex.Unlock()
+				conn.Close()
+				return
+			}
+			client.mutex.Unlock()
+		}
+	}()
+
+	log.Printf("WebSocket client connected from %s (total clients: %d)", r.RemoteAddr, len(clients))
 
 	// Send initial agents list
 	agents, err := getAllAgents()
@@ -1941,7 +1999,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		var msg map[string]interface{}
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
+				log.Printf("WebSocket unexpected close error: %v", err)
+			} else {
+				log.Printf("WebSocket client disconnected from %s (total clients: %d)", r.RemoteAddr, len(clients)-1)
+			}
 			break
 		}
 
@@ -1963,6 +2025,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			handleLootRequest(client, msg)
 		case "loot_file_request":
 			handleLootFileRequest(client, msg)
+		case "pong":
+			// Client explicitly sent pong message (in addition to WebSocket pong frame)
+			client.UpdatePong()
 		}
 	}
 }

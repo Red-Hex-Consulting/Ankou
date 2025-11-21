@@ -2,6 +2,7 @@ package accept
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -55,7 +56,12 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// Always drain and close body to allow connection reuse
+		// If body isn't fully read, connection can't return to pool
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}()
 
 	// Copy response back to client
 	if err := CopyResponse(w, resp, b.logger); err != nil {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -78,6 +79,16 @@ func (h *SSHHandler) acceptConnections(ctx context.Context) {
 func (h *SSHHandler) handleSSHConnection(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 
+	// Set connection deadline to prevent hanging connections (5 minute idle timeout)
+	// This will be updated on activity in a real implementation
+	conn.SetDeadline(time.Now().Add(5 * time.Minute))
+
+	// Monitor context and force close connection on cancellation
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
+
 	// Perform SSH handshake
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, h.sshConfig)
 	if err != nil {
@@ -92,8 +103,21 @@ func (h *SSHHandler) handleSSHConnection(ctx context.Context, conn net.Conn) {
 	// Discard global requests
 	go ssh.DiscardRequests(reqs)
 
-	// Handle channels (sessions)
+	// Handle channels (sessions) with context monitoring
+	go func() {
+		<-ctx.Done()
+		// Force close the connection when context is cancelled
+		sshConn.Close()
+	}()
+
 	for newChannel := range chans {
+		// Check context before accepting new channels
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		if newChannel.ChannelType() != "session" {
 			newChannel.Reject(ssh.UnknownChannelType, "unknown channel type")
 			continue
@@ -113,7 +137,20 @@ func (h *SSHHandler) handleSSHConnection(ctx context.Context, conn net.Conn) {
 func (h *SSHHandler) handleSSHSession(ctx context.Context, channel ssh.Channel, requests <-chan *ssh.Request) {
 	defer channel.Close()
 
+	// Monitor context and force close channel on cancellation
+	go func() {
+		<-ctx.Done()
+		channel.Close()
+	}()
+
 	for req := range requests {
+		// Check context before processing requests
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		switch req.Type {
 		case "exec":
 			// Agent is sending a message (registration, GraphQL query, command response)

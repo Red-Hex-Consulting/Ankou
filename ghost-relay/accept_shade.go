@@ -46,6 +46,9 @@ func setupShadeHandler(ctx context.Context) {
 		}
 	}()
 
+	// Register handler for proper shutdown
+	handlers = append(handlers, sshHandler)
+
 	logger.Printf("[+] Registered shade agent (SSH on %s)", bindAddr)
 }
 
