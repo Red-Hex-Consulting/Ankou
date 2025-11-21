@@ -33,18 +33,33 @@ func (h *HTTPSHandler) Start(ctx context.Context, addr string) error {
 
 	// Create HTTPS server with TLS config
 	h.server = &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		TLSConfig:    h.tlsConfig,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              addr,
+		Handler:           mux,
+		TLSConfig:         h.tlsConfig,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,              // Prevent slow-read attacks
+		MaxHeaderBytes:    1 << 20,                       // 1 MB max header size
 	}
 
 	h.Logger().Printf("[https:%s] Starting HTTPS listener on %s", h.AgentType(), addr)
 
-	// Start server (uses TLS cert from tlsConfig)
-	return h.server.ListenAndServeTLS("", "")
+	// Start server in goroutine to not block
+	go func() {
+		if err := h.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			h.Logger().Printf("[https:%s] Server error: %v", h.AgentType(), err)
+		}
+	}()
+
+	// Wait for context cancellation
+	go func() {
+		<-ctx.Done()
+		h.Logger().Printf("[https:%s] Context cancelled, shutting down", h.AgentType())
+		h.Stop()
+	}()
+
+	return nil
 }
 
 // Stop gracefully shuts down the HTTPS handler

@@ -42,16 +42,6 @@ func sendToC2(ctx context.Context, endpoint string, headers map[string]string, b
 	// Add the endpoint to the path
 	upstreamURL.Path = endpoint
 
-	// Create HTTP client with TLS config
-	client := &http.Client{
-		Timeout: cfg.ClientTimeout,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: cfg.InsecureSkipVerify,
-			},
-		},
-	}
-
 	// Validate agent's HMAC before forwarding
 	// Use struct to preserve json.RawMessage (map[string]interface{} would reorder fields)
 	var agentWrapper struct {
@@ -89,8 +79,8 @@ func sendToC2(ctx context.Context, endpoint string, headers map[string]string, b
 	req.Header.Set("X-Relay-Timestamp", timestamp)
 	req.Header.Set("X-Relay-Signature", signature)
 
-	// Send request
-	return client.Do(req)
+	// Send request using shared HTTP client (prevents socket leaks)
+	return httpClient.Do(req)
 }
 
 // setupAcceptHandlers configures and starts all accept handlers

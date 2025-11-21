@@ -27,5 +27,8 @@ func setupGeistHandler(ctx context.Context, tlsConfig *tls.Config) {
 		}
 	}()
 
+	// Register handler for proper shutdown
+	handlers = append(handlers, quicHandler)
+
 	logger.Printf("[+] Registered geist agent (QUIC on %s)", bindAddr)
 }

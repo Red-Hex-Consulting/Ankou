@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,10 +24,17 @@ import (
 
 // Global variables for use in accept.go
 var (
-	cfg    *config.Config
-	cert   *tls.Certificate
-	logger *log.Logger
+	cfg        *config.Config
+	cert       *tls.Certificate
+	logger     *log.Logger
+	httpClient *http.Client // Shared HTTP client to prevent socket leaks
+	handlers   []acceptHandler // Registry of all active handlers for proper shutdown
 )
+
+// acceptHandler interface for tracking handlers
+type acceptHandler interface {
+	Stop() error
+}
 
 func loadOrGenerateCert() (*tls.Certificate, error) {
 	// Check if certificate files exist
@@ -150,6 +158,35 @@ func main() {
 		log.Fatalf("failed to load or generate certificate: %v", err)
 	}
 
+	// Initialize shared HTTP client with proper connection pooling
+	// This prevents socket leaks by reusing connections instead of creating new transports per request
+	httpClient = &http.Client{
+		Timeout: cfg.ClientTimeout, // Overall request timeout (default: 15s)
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: cfg.InsecureSkipVerify,
+			},
+			// Connection limits
+			MaxIdleConns:        100,              // Maximum total idle connections
+			MaxIdleConnsPerHost: 10,               // Maximum idle connections per host
+			MaxConnsPerHost:     50,               // Maximum total connections per host
+			IdleConnTimeout:     90 * time.Second, // How long idle connections are kept
+			DisableKeepAlives:   false,            // Enable connection reuse
+			
+			// Critical timeouts to prevent socket leaks
+			DialContext: (&net.Dialer{
+				Timeout:   5 * time.Second,  // Max time to establish TCP connection
+				KeepAlive: 30 * time.Second, // TCP keepalive interval
+			}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second, // Max time for TLS handshake
+			ResponseHeaderTimeout: 10 * time.Second, // Max time waiting for response headers
+			ExpectContinueTimeout: 1 * time.Second,  // Max time waiting for 100-continue
+			
+			// Enable HTTP/2 for connection multiplexing (reduces socket usage)
+			ForceAttemptHTTP2: true,
+		},
+	}
+
 	logger.Printf("Starting Ghost Relay, forwarding to %s", cfg.UpstreamBaseURL)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -160,7 +197,38 @@ func main() {
 		log.Fatalf("failed to setup accept handlers: %v", err)
 	}
 
+	// Start periodic idle connection cleanup to prevent stale connections
+	go func() {
+		ticker := time.NewTicker(60 * time.Second) // Every minute
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if transport, ok := httpClient.Transport.(*http.Transport); ok {
+					transport.CloseIdleConnections()
+				}
+			}
+		}
+	}()
+
 	// Wait for shutdown signal
 	<-ctx.Done()
 	logger.Printf("shutdown signal received")
+
+	// Stop all accept handlers
+	logger.Printf("shutting down %d accept handlers...", len(handlers))
+	for i, handler := range handlers {
+		if err := handler.Stop(); err != nil {
+			logger.Printf("error stopping handler %d: %v", i, err)
+		}
+	}
+	logger.Printf("all accept handlers stopped")
+
+	// Close idle connections in the HTTP client transport
+	if transport, ok := httpClient.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+		logger.Printf("closed idle HTTP connections")
+	}
 }

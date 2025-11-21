@@ -421,7 +421,7 @@ func hmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		relaySignature := r.Header.Get("X-Relay-Signature")
 
 		if relayTimestamp == "" || relaySignature == "" {
-			log.Printf("Missing relay HMAC headers - all agents must connect through relay")
+			log.Printf("[Security] Missing relay HMAC headers from %s", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Missing relay authentication"})
@@ -431,7 +431,7 @@ func hmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Validate relay HMAC only
 		// The relay is responsible for validating agent HMAC
 		if !validateRelayHMAC(r, relayTimestamp, relaySignature, hmacKey) {
-			log.Printf("Relay HMAC validation failed")
+			log.Printf("[Security] Relay HMAC validation failed from %s", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid relay HMAC"})
@@ -779,6 +779,22 @@ func main() {
 		}
 	}()
 
+	// Start periodic cleanup of stale WebSocket connections (every 30 seconds)
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			staleTimeout := 90 * time.Second // Close connections with no pong for 90 seconds
+			for client := range clients {
+				if !client.IsAlive(staleTimeout) {
+					log.Printf("Closing stale WebSocket connection (no pong for >90s)")
+					client.Close()
+					delete(clients, client)
+				}
+			}
+		}
+	}()
+
 	// Generate TLS certificates if they don't exist
 	if err := generateSelfSignedCert(); err != nil {
 		log.Fatalf("Failed to generate TLS certificates: %v", err)
@@ -873,11 +889,8 @@ func main() {
 }
 
 func handleGraphQLMessage(client *Client, msg map[string]interface{}) {
-	log.Printf("Received GraphQL message: %+v", msg)
-
 	query, ok := msg["query"].(string)
 	if !ok {
-		log.Printf("Invalid query in GraphQL message")
 		client.WriteJSON(map[string]interface{}{
 			"id":    msg["id"],
 			"error": "Invalid query",
@@ -1017,8 +1030,6 @@ func handleAgentRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to determine request type", http.StatusBadRequest)
 		return
 	}
-
-	log.Printf("Agent request received - Action (from payload): %s, Path: %s, Listener Active: true", action, r.URL.Path)
 
 	switch action {
 	case "register":
@@ -1197,12 +1208,6 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 	typeHeader := r.Header.Get("type")
 	lootDataHeader := r.Header.Get("loot-data")
 
-	// Debug: Log all headers
-	log.Printf("All headers received:")
-	for name, values := range r.Header {
-		log.Printf("  %s: %v", name, values)
-	}
-
 	// Determine agent ID once so we can reuse it for storage and broadcasts
 	var agentID string
 	if err := db.QueryRow("SELECT agent_id FROM commands WHERE id = ?", response.CommandID).Scan(&agentID); err != nil {
@@ -1211,11 +1216,8 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 
 	lootUpdated := false
 
-	// Legacy file handler removed - now using loot entries for everything
-
 	// Handle loot entries (from ls command)
 	if typeHeader == "loot" && lootDataHeader != "" {
-		log.Printf("Loot entries received - CommandID: %d", response.CommandID)
 
 		if agentID == "" {
 			log.Printf("Skipping loot storage for command %d because agent ID was not found", response.CommandID)
@@ -1444,9 +1446,6 @@ func handleChunkUpload(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error updating chunk count: %v", err)
 	}
 
-	log.Printf("Chunk received: sessionID=%s, chunk=%d, size=%d bytes",
-		req.SessionID, req.ChunkIndex, len(chunkData))
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  200,
@@ -1664,8 +1663,6 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Login request received from %s", r.RemoteAddr)
-	log.Printf("Login request headers: %v", r.Header)
 
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1776,8 +1773,6 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRefresh(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Refresh request received from %s", r.RemoteAddr)
-	log.Printf("Request headers: %v", r.Header)
 
 	// Get token from Authorization header or cookie
 	var tokenString string
@@ -1786,7 +1781,6 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		log.Printf("Using token from Authorization header")
 	} else {
 		// Fallback to cookie
 		cookie, err := r.Cookie("ankou_token")
@@ -1798,13 +1792,12 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tokenString = cookie.Value
-		log.Printf("Using token from cookie")
 	}
 
 	// Validate existing token
 	token, err := validateJWT(tokenString)
 	if err != nil || !token.Valid {
-		log.Printf("Token validation failed: %v", err)
+		log.Printf("[Security] Token validation failed from %s", r.RemoteAddr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid token"})
@@ -1847,7 +1840,6 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Successfully refreshed token for user: %s", username)
-	log.Printf("New token generated: %s", newToken)
 
 	// Return success with new token (for Electron)
 	response := AuthResponse{
@@ -1880,6 +1872,14 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	// Limit maximum concurrent WebSocket connections to prevent resource exhaustion
+	const maxClients = 100
+	if len(clients) >= maxClients {
+		log.Printf("WebSocket connection limit reached (%d), rejecting connection from %s", maxClients, r.RemoteAddr)
+		http.Error(w, "Server at capacity", http.StatusServiceUnavailable)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
@@ -1888,9 +1888,43 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Wrap the connection in a Client for thread-safe writes
-	client := &Client{conn: conn}
+	client := &Client{conn: conn, lastPong: time.Now()}
 	clients[client] = true
 	defer delete(clients, client)
+
+	// Configure ping/pong handlers for connection health checks
+	const (
+		pongWait   = 60 * time.Second    // Time allowed to read pong from client
+		pingPeriod = (pongWait * 9) / 10 // Send pings at this interval (54 seconds)
+		writeWait  = 10 * time.Second    // Time allowed to write a message
+	)
+
+	// Set read deadline and pong handler
+	conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		conn.SetReadDeadline(time.Now().Add(pongWait))
+		client.UpdatePong()
+		return nil
+	})
+
+	// Start ping sender goroutine
+	pingTicker := time.NewTicker(pingPeriod)
+	defer pingTicker.Stop()
+
+	go func() {
+		for range pingTicker.C {
+			client.mutex.Lock()
+			conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				client.mutex.Unlock()
+				conn.Close()
+				return
+			}
+			client.mutex.Unlock()
+		}
+	}()
+
+	log.Printf("WebSocket client connected from %s (total clients: %d)", r.RemoteAddr, len(clients))
 
 	// Send initial agents list
 	agents, err := getAllAgents()
@@ -1941,15 +1975,17 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		var msg map[string]interface{}
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
+				log.Printf("WebSocket unexpected close error: %v", err)
+			} else {
+				log.Printf("WebSocket client disconnected from %s (total clients: %d)", r.RemoteAddr, len(clients)-1)
+			}
 			break
 		}
 
 		// Handle GraphQL over WebSocket
-		log.Printf("WebSocket message type: %v", msg["type"])
 		switch msg["type"] {
 		case "graphql":
-			log.Printf("Received GraphQL message type, calling handleGraphQLMessage")
 			handleGraphQLMessage(client, msg)
 		case "graphql_query":
 			handleGraphQLQuery(client, msg)
@@ -1963,6 +1999,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			handleLootRequest(client, msg)
 		case "loot_file_request":
 			handleLootFileRequest(client, msg)
+		case "pong":
+			client.UpdatePong()
 		}
 	}
 }
