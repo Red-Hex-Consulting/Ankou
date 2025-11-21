@@ -421,7 +421,7 @@ func hmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		relaySignature := r.Header.Get("X-Relay-Signature")
 
 		if relayTimestamp == "" || relaySignature == "" {
-			log.Printf("Missing relay HMAC headers - all agents must connect through relay")
+			log.Printf("[Security] Missing relay HMAC headers from %s", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Missing relay authentication"})
@@ -431,7 +431,7 @@ func hmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Validate relay HMAC only
 		// The relay is responsible for validating agent HMAC
 		if !validateRelayHMAC(r, relayTimestamp, relaySignature, hmacKey) {
-			log.Printf("Relay HMAC validation failed")
+			log.Printf("[Security] Relay HMAC validation failed from %s", r.RemoteAddr)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid relay HMAC"})
@@ -889,11 +889,8 @@ func main() {
 }
 
 func handleGraphQLMessage(client *Client, msg map[string]interface{}) {
-	log.Printf("Received GraphQL message: %+v", msg)
-
 	query, ok := msg["query"].(string)
 	if !ok {
-		log.Printf("Invalid query in GraphQL message")
 		client.WriteJSON(map[string]interface{}{
 			"id":    msg["id"],
 			"error": "Invalid query",
@@ -1033,8 +1030,6 @@ func handleAgentRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to determine request type", http.StatusBadRequest)
 		return
 	}
-
-	log.Printf("Agent request received - Action (from payload): %s, Path: %s, Listener Active: true", action, r.URL.Path)
 
 	switch action {
 	case "register":
@@ -1213,12 +1208,6 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 	typeHeader := r.Header.Get("type")
 	lootDataHeader := r.Header.Get("loot-data")
 
-	// Debug: Log all headers
-	log.Printf("All headers received:")
-	for name, values := range r.Header {
-		log.Printf("  %s: %v", name, values)
-	}
-
 	// Determine agent ID once so we can reuse it for storage and broadcasts
 	var agentID string
 	if err := db.QueryRow("SELECT agent_id FROM commands WHERE id = ?", response.CommandID).Scan(&agentID); err != nil {
@@ -1227,11 +1216,8 @@ func handleCommandResponse(w http.ResponseWriter, r *http.Request) {
 
 	lootUpdated := false
 
-	// Legacy file handler removed - now using loot entries for everything
-
 	// Handle loot entries (from ls command)
 	if typeHeader == "loot" && lootDataHeader != "" {
-		log.Printf("Loot entries received - CommandID: %d", response.CommandID)
 
 		if agentID == "" {
 			log.Printf("Skipping loot storage for command %d because agent ID was not found", response.CommandID)
@@ -1460,9 +1446,6 @@ func handleChunkUpload(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error updating chunk count: %v", err)
 	}
 
-	log.Printf("Chunk received: sessionID=%s, chunk=%d, size=%d bytes",
-		req.SessionID, req.ChunkIndex, len(chunkData))
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  200,
@@ -1680,8 +1663,6 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Login request received from %s", r.RemoteAddr)
-	log.Printf("Login request headers: %v", r.Header)
 
 	var req AuthRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1792,8 +1773,6 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleRefresh(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Refresh request received from %s", r.RemoteAddr)
-	log.Printf("Request headers: %v", r.Header)
 
 	// Get token from Authorization header or cookie
 	var tokenString string
@@ -1802,7 +1781,6 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	authHeader := r.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		tokenString = strings.TrimPrefix(authHeader, "Bearer ")
-		log.Printf("Using token from Authorization header")
 	} else {
 		// Fallback to cookie
 		cookie, err := r.Cookie("ankou_token")
@@ -1814,13 +1792,12 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tokenString = cookie.Value
-		log.Printf("Using token from cookie")
 	}
 
 	// Validate existing token
 	token, err := validateJWT(tokenString)
 	if err != nil || !token.Valid {
-		log.Printf("Token validation failed: %v", err)
+		log.Printf("[Security] Token validation failed from %s", r.RemoteAddr)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid token"})
@@ -1863,7 +1840,6 @@ func handleRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Successfully refreshed token for user: %s", username)
-	log.Printf("New token generated: %s", newToken)
 
 	// Return success with new token (for Electron)
 	response := AuthResponse{
@@ -2008,10 +1984,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Handle GraphQL over WebSocket
-		log.Printf("WebSocket message type: %v", msg["type"])
 		switch msg["type"] {
 		case "graphql":
-			log.Printf("Received GraphQL message type, calling handleGraphQLMessage")
 			handleGraphQLMessage(client, msg)
 		case "graphql_query":
 			handleGraphQLQuery(client, msg)
@@ -2026,7 +2000,6 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		case "loot_file_request":
 			handleLootFileRequest(client, msg)
 		case "pong":
-			// Client explicitly sent pong message (in addition to WebSocket pong frame)
 			client.UpdatePong()
 		}
 	}
