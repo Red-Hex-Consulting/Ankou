@@ -4,6 +4,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
 import { FaFolder, FaFolderOpen, FaFile, FaIdCard, FaChevronRight, FaChevronDown, FaCheckCircle, FaDownload, FaSpinner, FaThumbsUp, FaExclamationTriangle, FaSearch, FaArrowLeft, FaDatabase, FaFileCode, FaFileWord, FaFileExcel, FaFilePdf, FaFileImage, FaFileArchive, FaFileAlt, FaQuestion } from "react-icons/fa";
 import { RiSkull2Fill } from "react-icons/ri";
+import "./Loot.css";
 
 interface LootFile {
   id: number;
@@ -76,7 +77,7 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
 
   const rootFolders: LootFolder[] = [];
   const unorganized: LootFile[] = [];
-  
+
   // Track all directories that are represented in the folder structure
   const representedDirectories = new Set<string>();
 
@@ -84,17 +85,17 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
     if (file.originalPath && file.originalPath.trim() !== '') {
       // Remove the filename from the path to get just the directory path
       let directoryPath = file.originalPath;
-      
+
       // If the path ends with the filename, remove it
       if (file.filename && directoryPath.endsWith(file.filename)) {
         directoryPath = directoryPath.substring(0, directoryPath.length - file.filename.length);
         // Remove trailing path separators
         directoryPath = directoryPath.replace(/[\\\/]+$/, '');
       }
-      
+
       // Parse the directory path into components
       const pathParts = directoryPath.split(/[\\\/]/).filter(part => part && part.trim() !== '');
-      
+
       if (pathParts.length > 0) {
         // Track all directory paths in the structure
         let buildPath = '';
@@ -102,7 +103,7 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
           buildPath += (buildPath ? '\\' : '') + part;
           representedDirectories.add(buildPath.toLowerCase());
         });
-        
+
         // Start from root level
         let currentLevel = rootFolders;
         let currentPath = '';
@@ -111,7 +112,7 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
         let finalFolder = null;
         pathParts.forEach((part, index) => {
           currentPath += (currentPath ? '\\' : '') + part;
-          
+
           let folder = currentLevel.find(f => f.name === part);
           if (!folder) {
             folder = {
@@ -125,14 +126,14 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
           } else {
             folder.isExpanded = expandedPaths.has(currentPath);
           }
-          
+
           // Keep track of the final folder
           finalFolder = folder;
-          
+
           // Move to next level for directories
           currentLevel = folder.subfolders;
         });
-        
+
         // Add the file to the final directory
         if (finalFolder) {
           finalFolder.files.push(file);
@@ -147,7 +148,7 @@ const organizeFilesIntoFolders = (files: LootFile[], expandedPaths: Set<string> 
       unorganized.push(file);
     }
   });
-  
+
   // Filter out directory entries that are already represented in the folder structure
   const filterDirectoryDuplicates = (folders: LootFolder[]): LootFolder[] => {
     return folders.map(folder => ({
@@ -240,6 +241,7 @@ export default function Loot({ isActive }: LootProps) {
   const knownFileIdsRef = useRef<Set<number>>(new Set<number>());
   const recentFileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const collectingKeysRef = useRef<Set<string>>(new Set<string>());
+  const [activeTab, setActiveTab] = useState<'filesystem' | 'loose-files'>('filesystem');
 
   useEffect(() => {
     expandedPathsRef.current = expandedPaths;
@@ -383,7 +385,7 @@ export default function Loot({ isActive }: LootProps) {
 
     // Listen for custom loot events
     window.addEventListener('loot-response', handleLootResponse);
-    
+
     return () => {
       window.removeEventListener('loot-response', handleLootResponse);
     };
@@ -408,7 +410,7 @@ export default function Loot({ isActive }: LootProps) {
     setCollectingFiles(new Set<string>());
     collectingKeysRef.current = new Set<string>();
     setContextMenu(initialContextMenuState);
-    
+
     // Request loot data for this agent
     sendMessage({
       type: "loot_request",
@@ -443,7 +445,7 @@ export default function Loot({ isActive }: LootProps) {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins} minutes ago`;
     const diffHours = Math.floor(diffMins / 60);
@@ -452,7 +454,7 @@ export default function Loot({ isActive }: LootProps) {
     return `${diffDays} days ago`;
   };
 
-  const filteredAgents = agents?.filter(agent => 
+  const filteredAgents = agents?.filter(agent =>
     agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     agent.ip.toLowerCase().includes(searchTerm.toLowerCase()) ||
     agent.os.toLowerCase().includes(searchTerm.toLowerCase())
@@ -463,10 +465,10 @@ export default function Loot({ isActive }: LootProps) {
     if (file.fileType === 'directory') {
       return <FaFolder style={{ marginRight: '8px', color: '#ffd700', fontSize: '14px' }} />;
     }
-    
+
     // For files, use extension-based icons
     const extension = file.filename.split('.').pop()?.toLowerCase();
-    
+
     switch (extension) {
       case 'js':
       case 'ts':
@@ -484,20 +486,20 @@ export default function Loot({ isActive }: LootProps) {
       case 'swift':
       case 'kt':
         return <FaFileCode style={{ marginRight: '8px', color: '#4CAF50', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'doc':
       case 'docx':
       case 'rtf':
         return <FaFileWord style={{ marginRight: '8px', color: '#2196F3', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'xls':
       case 'xlsx':
       case 'csv':
         return <FaFileExcel style={{ marginRight: '8px', color: '#4CAF50', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'pdf':
         return <FaFilePdf style={{ marginRight: '8px', color: '#F44336', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'jpg':
       case 'jpeg':
       case 'png':
@@ -506,21 +508,21 @@ export default function Loot({ isActive }: LootProps) {
       case 'svg':
       case 'webp':
         return <FaFileImage style={{ marginRight: '8px', color: '#FF9800', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'zip':
       case 'rar':
       case '7z':
       case 'tar':
       case 'gz':
         return <FaFileArchive style={{ marginRight: '8px', color: '#9C27B0', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       case 'exe':
       case 'msi':
       case 'app':
       case 'deb':
       case 'rpm':
         return <FaFileAlt style={{ marginRight: '8px', color: '#FF5722', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
-      
+
       default:
         return <FaFile style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '12px', zIndex: 2, position: 'relative' }} />;
     }
@@ -668,10 +670,10 @@ export default function Loot({ isActive }: LootProps) {
         const handleFileContent = (event: Event) => {
           const customEvent = event as CustomEvent;
           const data = customEvent.detail;
-          
+
           if (data.type === 'loot_file_response' && data.fileId === file.id) {
             window.removeEventListener('loot-file-response', handleFileContent);
-            
+
             if (data.content) {
               try {
                 const binaryString = atob(data.content);
@@ -704,15 +706,15 @@ export default function Loot({ isActive }: LootProps) {
             }
           }
         };
-        
+
         window.addEventListener('loot-file-response', handleFileContent);
-        
+
         // Request file content
         sendMessage({
           type: 'loot_file_request',
           fileId: file.id
         });
-        
+
         // Timeout after 30 seconds
         setTimeout(() => {
           window.removeEventListener('loot-file-response', handleFileContent);
@@ -743,36 +745,36 @@ export default function Loot({ isActive }: LootProps) {
     const targetFile = contextMenu.file;
     const targetFolder = contextMenu.folder;
     setContextMenu(initialContextMenuState);
-    
+
     const agentId = selectedAgentRef.current;
     if (!agentId) {
       console.warn("Cannot explore directory without an active agent");
       return;
     }
-    
+
     let directoryPath: string | null = null;
-    
+
     // Handle file-based directory
     if (targetFile && targetFile.fileType === 'directory') {
       directoryPath = targetFile.originalPath || targetFile.storedPath || targetFile.filename;
     }
-    
+
     // Handle folder-based directory
     if (targetFolder) {
       directoryPath = targetFolder.path;
     }
-    
+
     if (directoryPath) {
       const escapedPath = directoryPath.replace(/"/g, '\\"');
       const command = `ls "${escapedPath}"`;
-      
+
       // Track directory exploration
       setExploringDirectories(prev => {
         const next = new Set(prev);
         next.add(directoryPath!);
         return next;
       });
-      
+
       sendCommand(agentId, command, user?.username || 'reaper');
     }
   };
@@ -782,9 +784,9 @@ export default function Loot({ isActive }: LootProps) {
     const isExpanded = folder.isExpanded;
     const isRootLevel = level === 0;
     const isFolderExploring = exploringDirectories.has(folder.path);
-    
+
     return (
-      <div key={folder.path} style={{ 
+      <div key={folder.path} style={{
         position: 'relative',
         marginLeft: level > 0 ? '20px' : '0'
       }}>
@@ -813,14 +815,14 @@ export default function Loot({ isActive }: LootProps) {
             }} />
           </>
         )}
-        
-        <div 
-          className="loot-folder" 
+
+        <div
+          className="loot-folder"
           onClick={() => hasContent && toggleFolder(folder.path)}
           onContextMenu={(e) => openFolderContextMenu(e, folder)}
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
             padding: '6px 8px',
             cursor: hasContent ? 'pointer' : 'default',
             backgroundColor: isFolderExploring ? 'rgba(255, 215, 0, 0.12)' : (isExpanded ? 'var(--bg-tertiary)' : 'transparent'),
@@ -846,33 +848,33 @@ export default function Loot({ isActive }: LootProps) {
           }}
         >
           {isFolderExploring && (
-            <FaSpinner 
-              style={{ 
-                marginRight: '8px', 
-                color: '#ffd700', 
-                fontSize: '10px', 
-                animation: 'spin 1s linear infinite' 
-              }} 
-              title="Exploring directory..." 
+            <FaSpinner
+              style={{
+                marginRight: '8px',
+                color: '#ffd700',
+                fontSize: '10px',
+                animation: 'spin 1s linear infinite'
+              }}
+              title="Exploring directory..."
             />
           )}
           {!isFolderExploring && hasContent && (
-            isExpanded ? <FaChevronDown style={{ marginRight: '8px', fontSize: '10px', color: 'var(--text-secondary)' }} /> 
-                      : <FaChevronRight style={{ marginRight: '8px', fontSize: '10px', color: 'var(--text-secondary)' }} />
+            isExpanded ? <FaChevronDown style={{ marginRight: '8px', fontSize: '10px', color: 'var(--text-secondary)' }} />
+              : <FaChevronRight style={{ marginRight: '8px', fontSize: '10px', color: 'var(--text-secondary)' }} />
           )}
-          {isExpanded ? <FaFolderOpen style={{ marginRight: '8px', color: '#ffd700', fontSize: '14px' }} /> 
-                     : <FaFolder style={{ marginRight: '8px', color: isFolderExploring ? '#ffaa00' : '#ffd700', fontSize: '14px' }} />}
-          <span style={{ 
-            color: isRootLevel ? 'var(--text-primary)' : 'var(--text-secondary)', 
+          {isExpanded ? <FaFolderOpen style={{ marginRight: '8px', color: '#ffd700', fontSize: '14px' }} />
+            : <FaFolder style={{ marginRight: '8px', color: isFolderExploring ? '#ffaa00' : '#ffd700', fontSize: '14px' }} />}
+          <span style={{
+            color: isRootLevel ? 'var(--text-primary)' : 'var(--text-secondary)',
             fontWeight: isRootLevel ? '600' : '400',
             fontSize: isRootLevel ? '14px' : '13px'
           }}>
             {folder.name}
           </span>
           {folder.files.length > 0 && (
-            <span style={{ 
-              marginLeft: '8px', 
-              color: 'var(--text-secondary)', 
+            <span style={{
+              marginLeft: '8px',
+              color: 'var(--text-secondary)',
               fontSize: '11px',
               backgroundColor: 'var(--bg-tertiary)',
               padding: '2px 6px',
@@ -882,7 +884,7 @@ export default function Loot({ isActive }: LootProps) {
             </span>
           )}
         </div>
-        
+
         {isExpanded && (
           <div>
             {folder.subfolders.map((subfolder, subIndex) =>
@@ -890,7 +892,7 @@ export default function Loot({ isActive }: LootProps) {
             )}
             {folder.files.map((file, fileIndex) => {
               const fileKey = getFileKey(file);
-               const isDownloaded = file.md5Hash && file.md5Hash.length > 0;
+              const isDownloaded = file.md5Hash && file.md5Hash.length > 0;
               const isDownloading = downloadingFiles.has(file.id);
               const hasBeenDownloaded = downloadedFiles.has(file.id);
               const isCollecting = fileKey ? collectingFiles.has(fileKey) : false;
@@ -903,9 +905,9 @@ export default function Loot({ isActive }: LootProps) {
               const baseBackground = isCollecting ? collectingHighlight : (isExploring ? exploringHighlight : (isRecent ? recentHighlight : 'transparent'));
 
               return (
-                <div 
-                  key={file.id} 
-                  style={{ 
+                <div
+                  key={file.id}
+                  style={{
                     position: 'relative',
                     marginLeft: '20px',
                     display: 'flex',
@@ -936,18 +938,18 @@ export default function Loot({ isActive }: LootProps) {
                       const directoryPath = file.originalPath || file.storedPath || file.filename;
                       const escapedPath = directoryPath.replace(/"/g, '\\"');
                       const command = `ls "${escapedPath}"`;
-                      
+
                       // Track directory exploration
                       setExploringDirectories(prev => {
                         const next = new Set(prev);
                         next.add(directoryPath);
                         return next;
                       });
-                      
+
                       sendCommand(agentId, command, user?.username || 'reaper');
                       return;
                     }
-                    
+
                     if (isDownloaded && !isDownloading) {
                       handleFileDownload(file);
                     } else if (!isDownloaded && !isCollecting) {
@@ -975,75 +977,75 @@ export default function Loot({ isActive }: LootProps) {
                     backgroundColor: 'var(--border-color)',
                     zIndex: 1
                   }} />
-                  
+
                   {getFileIcon(file)}
                   {isCollecting && !isDownloaded && (
-                    <FaSpinner 
-                      style={{ 
-                        marginRight: '6px', 
-                        color: '#2196F3', 
-                        fontSize: '10px', 
-                        animation: 'spin 1s linear infinite' 
-                      }} 
-                      title="Collecting from agent..." 
+                    <FaSpinner
+                      style={{
+                        marginRight: '6px',
+                        color: '#2196F3',
+                        fontSize: '10px',
+                        animation: 'spin 1s linear infinite'
+                      }}
+                      title="Collecting from agent..."
                     />
                   )}
                   {isExploring && (
-                    <FaSpinner 
-                      style={{ 
-                        marginRight: '6px', 
-                        color: '#ffd700', 
-                        fontSize: '10px', 
-                        animation: 'spin 1s linear infinite' 
-                      }} 
-                      title="Exploring directory..." 
+                    <FaSpinner
+                      style={{
+                        marginRight: '6px',
+                        color: '#ffd700',
+                        fontSize: '10px',
+                        animation: 'spin 1s linear infinite'
+                      }}
+                      title="Exploring directory..."
                     />
                   )}
                   {isDownloaded && (
                     <>
                       <FaCheckCircle style={{ marginRight: '6px', color: '#00ff00', fontSize: '10px' }} />
                       {isDownloading ? (
-                        <FaSpinner 
-                          style={{ 
-                            marginRight: '6px', 
-                            color: '#ffaa00', 
-                            fontSize: '10px', 
-                            animation: 'spin 1s linear infinite' 
-                          }} 
-                          title="Downloading..." 
+                        <FaSpinner
+                          style={{
+                            marginRight: '6px',
+                            color: '#ffaa00',
+                            fontSize: '10px',
+                            animation: 'spin 1s linear infinite'
+                          }}
+                          title="Downloading..."
                         />
                       ) : hasBeenDownloaded ? (
-                        <FaCheckCircle 
-                          style={{ 
-                            marginRight: '6px', 
-                            color: '#00aa00', 
-                            fontSize: '10px' 
-                          }} 
-                          title="Downloaded to your computer" 
+                        <FaCheckCircle
+                          style={{
+                            marginRight: '6px',
+                            color: '#00aa00',
+                            fontSize: '10px'
+                          }}
+                          title="Downloaded to your computer"
                         />
                       ) : (
-                        <FaDownload 
-                          style={{ 
-                            marginRight: '6px', 
-                            color: '#00ff00', 
-                            fontSize: '10px', 
-                            cursor: 'pointer' 
-                          }} 
-                          title="Click to download" 
+                        <FaDownload
+                          style={{
+                            marginRight: '6px',
+                            color: '#00ff00',
+                            fontSize: '10px',
+                            cursor: 'pointer'
+                          }}
+                          title="Click to download"
                         />
                       )}
                     </>
                   )}
-                  <span style={{ 
-                    color: isDownloaded ? 'var(--text-primary)' : 'var(--text-secondary)', 
+                  <span style={{
+                    color: isDownloaded ? 'var(--text-primary)' : 'var(--text-secondary)',
                     fontSize: '13px',
                     fontWeight: isDownloaded ? '500' : '400'
                   }}>
                     {file.filename}
                   </span>
-                  <span style={{ 
-                    marginLeft: '8px', 
-                    color: 'var(--text-secondary)', 
+                  <span style={{
+                    marginLeft: '8px',
+                    color: 'var(--text-secondary)',
                     fontSize: '11px',
                     fontFamily: 'monospace',
                     backgroundColor: 'var(--bg-tertiary)',
@@ -1053,9 +1055,9 @@ export default function Loot({ isActive }: LootProps) {
                     {Math.round(file.fileSize / 1024)}KB
                   </span>
                   {isDownloaded && (
-                    <span style={{ 
-                      marginLeft: '8px', 
-                      color: '#00ff00', 
+                    <span style={{
+                      marginLeft: '8px',
+                      color: '#00ff00',
                       fontSize: '10px',
                       fontFamily: 'monospace',
                       fontWeight: 'bold',
@@ -1067,9 +1069,9 @@ export default function Loot({ isActive }: LootProps) {
                     </span>
                   )}
                   {!isDownloaded && (
-                    <span style={{ 
-                      marginLeft: '8px', 
-                      color: 'var(--text-secondary)', 
+                    <span style={{
+                      marginLeft: '8px',
+                      color: 'var(--text-secondary)',
                       fontSize: '10px',
                       fontFamily: 'monospace',
                       backgroundColor: 'var(--bg-tertiary)',
@@ -1080,9 +1082,9 @@ export default function Loot({ isActive }: LootProps) {
                     </span>
                   )}
                   {isRecent && !isCollecting && (
-                    <span style={{ 
-                      marginLeft: '8px', 
-                      color: '#4CAF50', 
+                    <span style={{
+                      marginLeft: '8px',
+                      color: '#4CAF50',
                       fontSize: '10px',
                       fontWeight: 600,
                       textTransform: 'uppercase',
@@ -1116,7 +1118,7 @@ export default function Loot({ isActive }: LootProps) {
             />
           </div>
         </div>
-        
+
         <table className="agents-table">
           <thead>
             <tr>
@@ -1127,15 +1129,15 @@ export default function Loot({ isActive }: LootProps) {
           </thead>
           <tbody>
             {filteredAgents.map((agent) => (
-               <tr 
-                 key={agent.id}
-                 className="agent-row"
-                 onClick={() => handleAgentSelect(agent.id)}
-               >
-                 <td className="agent-name">{agent.name || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
-                 <td className="agent-ip">{agent.ip || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
-                 <td className="agent-os">{agent.os || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
-               </tr>
+              <tr
+                key={agent.id}
+                className="agent-row"
+                onClick={() => handleAgentSelect(agent.id)}
+              >
+                <td className="agent-name">{agent.name || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+                <td className="agent-ip">{agent.ip || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+                <td className="agent-os">{agent.os || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+              </tr>
             ))}
           </tbody>
         </table>
@@ -1146,9 +1148,9 @@ export default function Loot({ isActive }: LootProps) {
   // Show loot data view
   return (
     <div className="agents-container">
-       <div className="agents-search">
-         <div className="search-input-container">
-           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div className="agents-search">
+        <div className="search-input-container">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={handleBackToAgents}
               style={{
@@ -1176,63 +1178,224 @@ export default function Loot({ isActive }: LootProps) {
               <FaArrowLeft />
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-               <RiSkull2Fill style={{ color: 'var(--accent-red)', fontSize: '18px' }} />
-               <h2 style={{ 
-                 color: 'var(--text-primary)', 
-                 margin: '0', 
-                 fontSize: '18px',
-                 fontWeight: '600'
-               }}>
-                 {selectedAgent}
-               </h2>
-             </div>
-           </div>
-         </div>
-       </div>
+              <RiSkull2Fill style={{ color: 'var(--accent-red)', fontSize: '18px' }} />
+              <h2 style={{
+                color: 'var(--text-primary)',
+                margin: '0',
+                fontSize: '18px',
+                fontWeight: '600'
+              }}>
+                {selectedAgent}
+              </h2>
+            </div>
+          </div>
+        </div>
+      </div>
 
-       <div style={{
-         backgroundColor: 'var(--bg-primary)',
-         borderRadius: '8px',
-         border: '1px solid var(--border-color)',
-         overflow: 'hidden',
-         height: 'calc(100vh - 120px)',
-         overflowY: 'auto'
-       }}>
-        {loading && (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '40px', 
-            color: 'var(--text-secondary)',
-            fontSize: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px'
-          }}>
-            <FaSpinner style={{ animation: 'spin 1s linear infinite' }} />
-            Loading loot data...
-          </div>
-        )}
-        
-        {!loading && lootData.length === 0 && (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '40px', 
-            color: 'var(--text-secondary)',
-            fontSize: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px'
-          }}>
-            <FaFile style={{ opacity: 0.5 }} />
-            No loot files found for this agent.
-          </div>
-        )}
-        
-        {!loading && lootData.length > 0 && (
-          <div style={{ padding: '16px' }}>
-            {lootData.map((folder, index) => renderFolder(folder, 0, index === lootData.length - 1))}
+      <div className="loot-tabs">
+        <button
+          className={`loot-tab ${activeTab === 'filesystem' ? 'active' : ''}`}
+          onClick={() => setActiveTab('filesystem')}
+        >
+          <FaFolder className="tab-icon" />
+          <span>File System</span>
+        </button>
+        <button
+          className={`loot-tab ${activeTab === 'loose-files' ? 'active' : ''}`}
+          onClick={() => setActiveTab('loose-files')}
+        >
+          <FaDatabase className="tab-icon" />
+          <span>Loose Files</span>
+        </button>
+      </div>
+
+      <div style={{
+        backgroundColor: 'var(--bg-primary)',
+        borderRadius: '8px',
+        border: '1px solid var(--border-color)',
+        overflow: 'hidden',
+        height: 'calc(100vh - 180px)', // Adjusted height for tabs
+        overflowY: 'auto'
+      }}>
+        {activeTab === 'filesystem' ? (
+          <>
+            {loading && (
+              <div style={{
+                textAlign: 'center',
+                padding: '40px',
+                color: 'var(--text-secondary)',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}>
+                <FaSpinner style={{ animation: 'spin 1s linear infinite' }} />
+                Loading loot data...
+              </div>
+            )}
+
+            {!loading && lootData.length === 0 && (
+              <div style={{
+                textAlign: 'center',
+                padding: '40px',
+                color: 'var(--text-secondary)',
+                fontSize: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}>
+                <FaFile style={{ opacity: 0.5 }} />
+                No loot files found for this agent.
+              </div>
+            )}
+
+            {!loading && lootData.length > 0 && (
+              <div style={{ padding: '16px' }}>
+                {lootData.map((folder, index) => renderFolder(folder, 0, index === lootData.length - 1))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="loose-files-container" style={{ padding: '16px' }}>
+            {lootData.filter(folder => folder.path === "unorganized").map(folder => (
+              <div key="loose-files-grid" style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                gap: '16px'
+              }}>
+                {folder.files.map(file => {
+                  const isDownloaded = file.md5Hash && file.md5Hash.length > 0;
+                  const isDownloading = downloadingFiles.has(file.id);
+                  const isCollecting = collectingFiles.has(getFileKey(file) || "");
+
+                  return (
+                    <div
+                      key={file.id}
+                      className="loose-file-card"
+                      style={{
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        position: 'relative'
+                      }}
+                      onClick={() => {
+                        if (isDownloaded && !isDownloading) {
+                          handleFileDownload(file);
+                        } else if (!isDownloaded && !isCollecting) {
+                          handleCollectFile(file);
+                        }
+                      }}
+                      onContextMenu={(event) => openContextMenu(event, file)}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.borderColor = 'var(--accent-color)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'none';
+                        e.currentTarget.style.borderColor = 'var(--border-color)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '80px',
+                        backgroundColor: 'var(--bg-tertiary)',
+                        borderRadius: '4px',
+                        marginBottom: '4px'
+                      }}>
+                        {file.filename.endsWith('.png') || file.filename.endsWith('.jpg') ? (
+                          <FaFileImage style={{ fontSize: '32px', color: '#FF9800' }} />
+                        ) : (
+                          getFileIcon(file)
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          color: 'var(--text-primary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        }} title={file.filename}>
+                          {file.filename}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          {Math.round(file.fileSize / 1024)}KB • {formatLastSeen(file.createdAt)}
+                        </span>
+                      </div>
+
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginTop: 'auto',
+                        fontSize: '11px'
+                      }}>
+                        {isDownloaded ? (
+                          <>
+                            <FaCheckCircle style={{ color: '#00ff00' }} />
+                            <span style={{ color: '#00ff00' }}>Downloaded</span>
+                          </>
+                        ) : isCollecting ? (
+                          <>
+                            <FaSpinner style={{ animation: 'spin 1s linear infinite', color: '#2196F3' }} />
+                            <span style={{ color: '#2196F3' }}>Collecting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <FaDatabase style={{ color: 'var(--text-secondary)' }} />
+                            <span style={{ color: 'var(--text-secondary)' }}>On Agent</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+
+            {(!lootData.some(f => f.path === "unorganized") || lootData.find(f => f.path === "unorganized")?.files.length === 0) && (
+              <div style={{
+                textAlign: 'center',
+                padding: '40px',
+                color: 'var(--text-secondary)',
+                fontSize: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px'
+              }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <FaDatabase style={{ fontSize: '24px', opacity: 0.5 }} />
+                </div>
+                <div>
+                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>No Loose Files</h3>
+                  <p>Files captured without a directory path (like screenshots) will appear here.</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

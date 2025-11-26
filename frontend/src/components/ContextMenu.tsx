@@ -9,21 +9,39 @@ interface Script {
   createdAt: string;
 }
 
+import { Agent, AgentHandler } from '../hooks/useWebSocket';
+
 interface ContextMenuProps {
   isVisible: boolean;
   x: number;
   y: number;
+  agent: Agent | null;
+  handlers?: AgentHandler[];
   onClose: () => void;
   onPut: () => void;
   onInject: () => void;
   onScriptExecute: (script: Script) => void;
 }
 
-export default function ContextMenu({ isVisible, x, y, onClose, onPut, onInject, onScriptExecute }: ContextMenuProps) {
+export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScriptExecute }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState({ x, y });
   const [scriptsExpanded, setScriptsExpanded] = useState(false);
   const [scripts, setScripts] = useState<Script[]>([]);
+
+  // Check if agent supports injection
+  const canInject = React.useMemo(() => {
+    if (!agent || !handlers) return false;
+
+    // Find handler for this agent
+    // The agent.handlerName matches the handler.agentName
+    // Or we can match by ID if available, but let's try name first as it's visible in table
+    const handler = handlers.find(h => h.agentName === agent.handlerName);
+
+    if (!handler) return false;
+
+    return handler.supportedCommands.includes('injectsc');
+  }, [agent, handlers]);
 
   // Calculate smart positioning to keep menu within viewport
   useEffect(() => {
@@ -34,7 +52,7 @@ export default function ContextMenu({ isVisible, x, y, onClose, onPut, onInject,
     const viewportHeight = window.innerHeight;
     const menuWidth = 200; // Approximate menu width
     const menuHeight = 100; // Approximate menu height
-    
+
     let adjustedX = x;
     let adjustedY = y;
 
@@ -53,7 +71,7 @@ export default function ContextMenu({ isVisible, x, y, onClose, onPut, onInject,
     if (bottomTerminal) {
       const terminalRect = bottomTerminal.getBoundingClientRect();
       const terminalTop = terminalRect.top;
-      
+
       // If menu would overlap with terminal, position it above the terminal
       if (adjustedY + menuHeight > terminalTop) {
         adjustedY = terminalTop - menuHeight - 10;
@@ -121,15 +139,17 @@ export default function ContextMenu({ isVisible, x, y, onClose, onPut, onInject,
         <FaUpload className="context-menu-icon" />
         <span>Put File</span>
       </div>
-      <div className="context-menu-item" onClick={onInject}>
-        <FaSyringe className="context-menu-icon" />
-        <span>Inject</span>
-      </div>
-      
+      {canInject && (
+        <div className="context-menu-item" onClick={onInject}>
+          <FaSyringe className="context-menu-icon" />
+          <span>Inject</span>
+        </div>
+      )}
+
       {/* Scripts Section */}
       <div className="context-menu-divider" />
       <div className="context-menu-item-wrapper">
-        <div 
+        <div
           className="context-menu-item context-menu-expandable"
           onClick={(e) => {
             e.stopPropagation();
@@ -138,11 +158,11 @@ export default function ContextMenu({ isVisible, x, y, onClose, onPut, onInject,
         >
           <FaCog className="context-menu-icon" />
           <span>Scripts</span>
-          <FaChevronRight 
+          <FaChevronRight
             className={`context-menu-chevron ${scriptsExpanded ? 'expanded' : ''}`}
           />
         </div>
-        
+
         {scriptsExpanded && (
           <div className="context-menu-submenu">
             {scripts.length === 0 ? (
