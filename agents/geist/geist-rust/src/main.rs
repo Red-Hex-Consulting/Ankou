@@ -207,7 +207,7 @@ async fn register_agent(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let reg = AgentRegistration {
         uuid: state.agent_id.clone(),
-        name: format!("{}-{}", obfstr!("A"), &state.agent_id[..8]),
+        name: state.agent_id.clone(),
         ip: get_local_ip(),
         os: get_os_info(),
         reconnect_interval: state.reconnect_interval,

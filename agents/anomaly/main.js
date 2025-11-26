@@ -129,7 +129,7 @@ function getLocalIP() {
 async function registerAgent() {
     const registration = {
         uuid: state.agentId,
-        name: `Agent-${state.agentId.substring(0, 8)}`,
+        name: state.agentId,
         ip: getLocalIP(),
         os: `${os.platform()} ${os.arch()}`,
         reconnectInterval: state.reconnectInterval

