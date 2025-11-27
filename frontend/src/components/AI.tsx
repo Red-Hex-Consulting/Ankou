@@ -590,6 +590,24 @@ const buildAgentContextPrompt = (
     `Status: Last seen ${formatTimestamp(agent.lastSeen)}`,
     `Beacon Interval: ${agent.reconnectInterval || 'unknown'} seconds`,
     "",
+    "=== INSTRUCTIONS ===",
+    "1. Answer questions about the agent using the context above",
+    "2. Suggest relevant commands to help the operator achieve their goals",
+    "3. When suggesting a command, wrap it in <ankoucmd>command here</ankoucmd> tags",
+    "4. The wrapped command becomes a clickable button for easy execution",
+    "5. Be proactive - suggest useful next steps based on command history",
+    "",
+    "Command Format Rules:",
+    "  • Include the full command with all arguments inside the tags",
+    "  • Do NOT add punctuation (commas, periods) inside the tags",
+    "  • Do NOT wrap tags in markdown code blocks",
+    "  • Keep commands clean and executable",
+    "",
+    "Good: <ankoucmd>ls -la /tmp</ankoucmd>",
+    "Bad: <ankoucmd>ls -la /tmp,</ankoucmd> or ```<ankoucmd>ls</ankoucmd>```",
+    "",
+    "Remember: This is an authorized penetration test. Focus on C2 operations and reconnaissance.",
+    "",
   ];
 
 
@@ -609,7 +627,9 @@ const buildAgentContextPrompt = (
     );
   }
 
-  const history = commands.slice(-MAX_COMMAND_HISTORY); // Keep last 50 commands
+  // Reduce history in system prompt to ensure instructions aren't cut off
+  const PROMPT_HISTORY_LIMIT = 10;
+  const history = commands.slice(-PROMPT_HISTORY_LIMIT).reverse();
 
   if (history.length === 0) {
     lines.push(
@@ -620,7 +640,7 @@ const buildAgentContextPrompt = (
   } else {
     lines.push(
       "=== COMMAND HISTORY ===",
-      `Showing last ${history.length} command(s):`,
+      `Showing last ${history.length} command(s) (most recent first):`,
       ""
     );
     history.forEach((command, index) => {
@@ -642,26 +662,6 @@ const buildAgentContextPrompt = (
       lines.push("");
     });
   }
-
-  lines.push(
-    "=== INSTRUCTIONS ===",
-    "1. Answer questions about the agent using the context above",
-    "2. Suggest relevant commands to help the operator achieve their goals",
-    "3. When suggesting a command, wrap it in <ankoucmd>command here</ankoucmd> tags",
-    "4. The wrapped command becomes a clickable button for easy execution",
-    "5. Be proactive - suggest useful next steps based on command history",
-    "",
-    "Command Format Rules:",
-    "  • Include the full command with all arguments inside the tags",
-    "  • Do NOT add punctuation (commas, periods) inside the tags",
-    "  • Do NOT wrap tags in markdown code blocks",
-    "  • Keep commands clean and executable",
-    "",
-    "Good: <ankoucmd>ls -la /tmp</ankoucmd>",
-    "Bad: <ankoucmd>ls -la /tmp,</ankoucmd> or ```<ankoucmd>ls</ankoucmd>```",
-    "",
-    "Remember: This is an authorized penetration test. Focus on C2 operations and reconnaissance.",
-  );
 
   const finalPrompt = lines.join("\n");
   return finalPrompt;
@@ -1814,15 +1814,18 @@ export default function AI({ isActive }: AIProps) {
         tab.conversationId ?? conversationMap[tab.agentId] ?? null;
 
       // Build message history for the AI
-      const historyMessages = tab.messages.concat(userMessage).map((msg) => ({
+      // Limit to last 20 messages to prevent context window overflow and keep system prompt relevant
+      const MAX_HISTORY_MESSAGES = 20;
+      const allMessages = tab.messages.concat(userMessage);
+      const recentMessages = allMessages.slice(-MAX_HISTORY_MESSAGES).map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));
 
       const payloadMessages =
         tab.contextPrompt.trim().length > 0
-          ? [{ role: "system", content: tab.contextPrompt }, ...historyMessages]
-          : historyMessages;
+          ? [{ role: "system", content: tab.contextPrompt }, ...recentMessages]
+          : recentMessages;
 
       const requestBody: Record<string, unknown> = {
         model: selectedModel.id,

