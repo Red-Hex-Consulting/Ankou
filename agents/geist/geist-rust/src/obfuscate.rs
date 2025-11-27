@@ -1,4 +1,30 @@
-const XOR_KEY: u8 = 0x7A;
+const fn parse_hex_key() -> u8 {
+    match option_env!("GEIST_XOR_KEY") {
+        Some(hex_str) => {
+            let bytes = hex_str.as_bytes();
+            if bytes.len() >= 2 {
+                let high = match bytes[0] {
+                    b'0'..=b'9' => bytes[0] - b'0',
+                    b'a'..=b'f' => bytes[0] - b'a' + 10,
+                    b'A'..=b'F' => bytes[0] - b'A' + 10,
+                    _ => 7,
+                };
+                let low = match bytes[1] {
+                    b'0'..=b'9' => bytes[1] - b'0',
+                    b'a'..=b'f' => bytes[1] - b'a' + 10,
+                    b'A'..=b'F' => bytes[1] - b'A' + 10,
+                    _ => 10,
+                };
+                (high << 4) | low
+            } else {
+                0x7A
+            }
+        }
+        None => 0x7A,
+    }
+}
+
+const XOR_KEY: u8 = parse_hex_key();
 
 #[inline(always)]
 pub fn deobfuscate(input: &[u8]) -> String {
@@ -11,7 +37,29 @@ macro_rules! obfstr {
     ($s:literal) => {{
         const INPUT: &[u8] = $s.as_bytes();
         const LEN: usize = INPUT.len();
-        const XOR_KEY: u8 = 0x7A;
+        const XOR_KEY: u8 = match option_env!("GEIST_XOR_KEY") {
+            Some(hex_str) => {
+                let bytes = hex_str.as_bytes();
+                if bytes.len() >= 2 {
+                    let high = match bytes[0] {
+                        b'0'..=b'9' => bytes[0] - b'0',
+                        b'a'..=b'f' => bytes[0] - b'a' + 10,
+                        b'A'..=b'F' => bytes[0] - b'A' + 10,
+                        _ => 7,
+                    };
+                    let low = match bytes[1] {
+                        b'0'..=b'9' => bytes[1] - b'0',
+                        b'a'..=b'f' => bytes[1] - b'a' + 10,
+                        b'A'..=b'F' => bytes[1] - b'A' + 10,
+                        _ => 10,
+                    };
+                    (high << 4) | low
+                } else {
+                    0x7A
+                }
+            }
+            None => 0x7A,
+        };
         
         const ENCRYPTED: [u8; LEN] = {
             let mut result = [0u8; LEN];

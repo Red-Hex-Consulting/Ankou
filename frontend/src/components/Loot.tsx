@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
-import { FaFolder, FaFolderOpen, FaFile, FaIdCard, FaChevronRight, FaChevronDown, FaCheckCircle, FaDownload, FaSpinner, FaThumbsUp, FaExclamationTriangle, FaSearch, FaArrowLeft, FaDatabase, FaFileCode, FaFileWord, FaFileExcel, FaFilePdf, FaFileImage, FaFileArchive, FaFileAlt, FaQuestion } from "react-icons/fa";
+import { FaFolder, FaFolderOpen, FaFile, FaIdCard, FaChevronRight, FaChevronDown, FaCheckCircle, FaDownload, FaSpinner, FaThumbsUp, FaExclamationTriangle, FaSearch, FaArrowLeft, FaDatabase, FaFileCode, FaFileWord, FaFileExcel, FaFilePdf, FaFileImage, FaFileArchive, FaFileAlt, FaQuestion, FaImages } from "react-icons/fa";
 import { RiSkull2Fill } from "react-icons/ri";
 import "./Loot.css";
 
@@ -242,6 +242,9 @@ export default function Loot({ isActive }: LootProps) {
   const recentFileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const collectingKeysRef = useRef<Set<string>>(new Set<string>());
   const [activeTab, setActiveTab] = useState<'filesystem' | 'loose-files'>('filesystem');
+  const [looseFilesSearch, setLooseFilesSearch] = useState("");
+  const [imagePreviewCache, setImagePreviewCache] = useState<Map<number, string>>(new Map());
+  const [loadingPreviews, setLoadingPreviews] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     expandedPathsRef.current = expandedPaths;
@@ -410,6 +413,9 @@ export default function Loot({ isActive }: LootProps) {
     setCollectingFiles(new Set<string>());
     collectingKeysRef.current = new Set<string>();
     setContextMenu(initialContextMenuState);
+    setLooseFilesSearch("");
+    setImagePreviewCache(new Map());
+    setLoadingPreviews(new Set());
 
     // Request loot data for this agent
     sendMessage({
@@ -437,6 +443,9 @@ export default function Loot({ isActive }: LootProps) {
     setCollectingFiles(new Set<string>());
     collectingKeysRef.current = new Set<string>();
     setContextMenu(initialContextMenuState);
+    setLooseFilesSearch("");
+    setImagePreviewCache(new Map());
+    setLoadingPreviews(new Set());
   };
 
 
@@ -776,6 +785,89 @@ export default function Loot({ isActive }: LootProps) {
       });
 
       sendCommand(agentId, command, user?.username || 'reaper');
+    }
+  };
+
+  const isImageFile = (filename: string): boolean => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    return ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'gif' || ext === 'webp' || ext === 'bmp';
+  };
+
+  const fetchImagePreview = async (file: LootFile) => {
+    if (!file.md5Hash || file.md5Hash.length === 0) {
+      return;
+    }
+
+    if (imagePreviewCache.has(file.id)) {
+      return;
+    }
+
+    if (loadingPreviews.has(file.id)) {
+      return;
+    }
+
+    setLoadingPreviews(prev => {
+      const next = new Set(prev);
+      next.add(file.id);
+      return next;
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const handleFileContent = (event: Event) => {
+          const customEvent = event as CustomEvent;
+          const data = customEvent.detail;
+
+          if (data.type === 'loot_file_response' && data.fileId === file.id) {
+            window.removeEventListener('loot-file-response', handleFileContent);
+
+            if (data.content) {
+              try {
+                const ext = file.filename.split('.').pop()?.toLowerCase();
+                let mimeType = 'image/png';
+                if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+                else if (ext === 'gif') mimeType = 'image/gif';
+                else if (ext === 'webp') mimeType = 'image/webp';
+                else if (ext === 'bmp') mimeType = 'image/bmp';
+
+                const dataUrl = `data:${mimeType};base64,${data.content}`;
+                
+                setImagePreviewCache(prev => {
+                  const next = new Map(prev);
+                  next.set(file.id, dataUrl);
+                  return next;
+                });
+
+                resolve();
+              } catch (error) {
+                reject(new Error(`Failed to decode image: ${error}`));
+              }
+            } else {
+              reject(new Error('No file content received'));
+            }
+          }
+        };
+
+        window.addEventListener('loot-file-response', handleFileContent);
+
+        sendMessage({
+          type: 'loot_file_request',
+          fileId: file.id
+        });
+
+        setTimeout(() => {
+          window.removeEventListener('loot-file-response', handleFileContent);
+          reject(new Error('Image preview timeout'));
+        }, 10000);
+      });
+    } catch (error) {
+      console.error('Failed to fetch image preview:', error);
+    } finally {
+      setLoadingPreviews(prev => {
+        const next = new Set(prev);
+        next.delete(file.id);
+        return next;
+      });
     }
   };
 
@@ -1204,8 +1296,8 @@ export default function Loot({ isActive }: LootProps) {
           className={`loot-tab ${activeTab === 'loose-files' ? 'active' : ''}`}
           onClick={() => setActiveTab('loose-files')}
         >
-          <FaDatabase className="tab-icon" />
-          <span>Loose Files</span>
+          <FaImages className="tab-icon" />
+          <span>Images</span>
         </button>
       </div>
 
@@ -1259,16 +1351,50 @@ export default function Loot({ isActive }: LootProps) {
           </>
         ) : (
           <div className="loose-files-container" style={{ padding: '16px' }}>
-            {lootData.filter(folder => folder.path === "unorganized").map(folder => (
+            <div style={{ marginBottom: '16px' }}>
+              <div className="search-input-container">
+                <FaSearch className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search images..."
+                  value={looseFilesSearch}
+                  onChange={(e) => setLooseFilesSearch(e.target.value)}
+                  className="search-input"
+                />
+              </div>
+            </div>
+
+            {lootData.filter(folder => folder.path === "unorganized").map(folder => {
+              const filteredFiles = folder.files.filter(file => {
+                // First filter: only show image files
+                if (!isImageFile(file.filename)) return false;
+                
+                // Second filter: search term
+                if (!looseFilesSearch) return true;
+                const search = looseFilesSearch.toLowerCase();
+                return file.filename.toLowerCase().includes(search) ||
+                       (file.originalPath && file.originalPath.toLowerCase().includes(search)) ||
+                       (file.storedPath && file.storedPath.toLowerCase().includes(search));
+              });
+
+              return (
               <div key="loose-files-grid" style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
                 gap: '16px'
               }}>
-                {folder.files.map(file => {
+                {filteredFiles.map(file => {
                   const isDownloaded = file.md5Hash && file.md5Hash.length > 0;
                   const isDownloading = downloadingFiles.has(file.id);
                   const isCollecting = collectingFiles.has(getFileKey(file) || "");
+                  const isImage = isImageFile(file.filename);
+                  const hasPreview = imagePreviewCache.has(file.id);
+                  const isLoadingPreview = loadingPreviews.has(file.id);
+
+                  // Fetch image preview when the file is downloaded and it's an image
+                  if (isImage && isDownloaded && !hasPreview && !isLoadingPreview) {
+                    fetchImagePreview(file);
+                  }
 
                   return (
                     <div
@@ -1309,15 +1435,34 @@ export default function Loot({ isActive }: LootProps) {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        height: '80px',
+                        height: '120px',
                         backgroundColor: 'var(--bg-tertiary)',
                         borderRadius: '4px',
-                        marginBottom: '4px'
+                        marginBottom: '4px',
+                        overflow: 'hidden',
+                        position: 'relative'
                       }}>
-                        {file.filename.endsWith('.png') || file.filename.endsWith('.jpg') ? (
+                        {isImage && hasPreview ? (
+                          <img
+                            src={imagePreviewCache.get(file.id)}
+                            alt={file.filename}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              borderRadius: '4px'
+                            }}
+                          />
+                        ) : isImage && isLoadingPreview ? (
+                          <FaSpinner style={{ 
+                            fontSize: '24px', 
+                            color: 'var(--text-secondary)',
+                            animation: 'spin 1s linear infinite' 
+                          }} />
+                        ) : isImage ? (
                           <FaFileImage style={{ fontSize: '32px', color: '#FF9800' }} />
                         ) : (
-                          getFileIcon(file)
+                          <div style={{ fontSize: '32px' }}>{getFileIcon(file)}</div>
                         )}
                       </div>
 
@@ -1365,9 +1510,18 @@ export default function Loot({ isActive }: LootProps) {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
 
-            {(!lootData.some(f => f.path === "unorganized") || lootData.find(f => f.path === "unorganized")?.files.length === 0) && (
+            {looseFilesSearch && lootData.filter(f => f.path === "unorganized").every(folder => 
+              folder.files.filter(file => {
+                if (!isImageFile(file.filename)) return false;
+                const search = looseFilesSearch.toLowerCase();
+                return file.filename.toLowerCase().includes(search) ||
+                       (file.originalPath && file.originalPath.toLowerCase().includes(search)) ||
+                       (file.storedPath && file.storedPath.toLowerCase().includes(search));
+              }).length === 0
+            ) && (
               <div style={{
                 textAlign: 'center',
                 padding: '40px',
@@ -1388,11 +1542,41 @@ export default function Loot({ isActive }: LootProps) {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <FaDatabase style={{ fontSize: '24px', opacity: 0.5 }} />
+                  <FaSearch style={{ fontSize: '24px', opacity: 0.5 }} />
                 </div>
                 <div>
-                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>No Loose Files</h3>
-                  <p>Files captured without a directory path (like screenshots) will appear here.</p>
+                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>No Results Found</h3>
+                  <p>No files match your search: "{looseFilesSearch}"</p>
+                </div>
+              </div>
+            )}
+
+            {!looseFilesSearch && (!lootData.some(f => f.path === "unorganized") || lootData.find(f => f.path === "unorganized")?.files.filter(file => isImageFile(file.filename)).length === 0) && (
+              <div style={{
+                textAlign: 'center',
+                padding: '40px',
+                color: 'var(--text-secondary)',
+                fontSize: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px'
+              }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <FaImages style={{ fontSize: '24px', opacity: 0.5 }} />
+                </div>
+                <div>
+                  <h3 style={{ color: 'var(--text-primary)', marginBottom: '4px' }}>No Images</h3>
+                  <p>Screenshots and files without a directory path will appear here.</p>
                 </div>
               </div>
             )}

