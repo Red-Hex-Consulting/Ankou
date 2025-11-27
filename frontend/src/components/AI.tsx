@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { IoSend } from "react-icons/io5";
 import { SiOllama } from "react-icons/si";
-import { FaUserSecret, FaPlay, FaCheckCircle, FaExclamationTriangle, FaSpinner, FaThumbsUp, FaQuestion } from "react-icons/fa";
+import { FaUserSecret, FaPlay, FaCheckCircle, FaExclamationTriangle, FaSpinner, FaThumbsUp, FaQuestion, FaChevronDown, FaChevronRight, FaLightbulb } from "react-icons/fa";
 import ReactMarkdown from "react-markdown";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
@@ -88,9 +88,10 @@ const CHAT_TABS_STORAGE_KEY = "openwebui_agent_chat_tabs";
 const ACTIVE_TAB_STORAGE_KEY = "openwebui_agent_active_tab";
 const MAX_COMMAND_HISTORY = 50;
 const COMMAND_TAG_REGEX = /<\s*(?:cmdankou|ankoucmd)\s*>([\s\S]*?)<\/\s*(?:cmdankou|ankoucmd)\s*>/gi;
+const THINK_TAG_REGEX = /<think>([\s\S]*?)<\/think>/gi;
 
 interface MessageSegment {
-  type: "markdown" | "command";
+  type: "markdown" | "command" | "thought";
   value: string;
 }
 
@@ -100,31 +101,75 @@ const splitMessageSegments = (content: string): MessageSegment[] => {
   }
 
   const segments: MessageSegment[] = [];
-  const regex = new RegExp(COMMAND_TAG_REGEX.source, "gi");
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      const markdownPart = content.slice(lastIndex, match.index);
-      if (markdownPart.trim().length > 0) {
-        segments.push({ type: "markdown", value: markdownPart });
-      }
-    }
+  // Check for open think tag at the end (streaming case)
+  // This regex looks for <think> that doesn't have a closing </think>
+  const openThinkMatch = content.match(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/);
 
-    const command = match[1].replace(/^[\s,]+|[\s,]+$/g, "").trim();
-    if (command.length > 0) {
-      segments.push({ type: "command", value: command });
-    }
+  let contentToProcess = content;
+  let openThinkContent = "";
 
-    lastIndex = regex.lastIndex;
+  if (openThinkMatch) {
+    // We found an open think tag. 
+    // The content before it is normal content (or closed think tags)
+    // The content inside it is the streaming thought
+    const openThinkIndex = openThinkMatch.index!;
+    contentToProcess = content.substring(0, openThinkIndex);
+    openThinkContent = openThinkMatch[1];
   }
 
-  if (lastIndex < content.length) {
-    const tail = content.slice(lastIndex);
-    if (tail.trim().length > 0) {
-      segments.push({ type: "markdown", value: tail });
+  // First, split by think tags in the processed content
+  const thinkParts = contentToProcess.split(THINK_TAG_REGEX);
+
+  // The split will result in: [pre-think, thought-content, post-think, thought-content, ...]
+  // If no think tags, it's just [content]
+
+  for (let i = 0; i < thinkParts.length; i++) {
+    const part = thinkParts[i];
+
+    // If it's a thought content (odd indices in the split result if the regex has capturing group)
+    // Note: split with capturing group includes the captured content in the array
+    if (i % 2 === 1) {
+      if (part.trim().length > 0) {
+        segments.push({ type: "thought", value: part });
+      }
+      continue;
     }
+
+    // If it's regular content (even indices), process for commands
+    if (part.length === 0) continue;
+
+    const commandRegex = new RegExp(COMMAND_TAG_REGEX.source, "gi");
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = commandRegex.exec(part)) !== null) {
+      if (match.index > lastIndex) {
+        const markdownPart = part.slice(lastIndex, match.index);
+        if (markdownPart.trim().length > 0) {
+          segments.push({ type: "markdown", value: markdownPart });
+        }
+      }
+
+      const command = match[1].replace(/^[\s,]+|[\s,]+$/g, "").trim();
+      if (command.length > 0) {
+        segments.push({ type: "command", value: command });
+      }
+
+      lastIndex = commandRegex.lastIndex;
+    }
+
+    if (lastIndex < part.length) {
+      const tail = part.slice(lastIndex);
+      if (tail.trim().length > 0) {
+        segments.push({ type: "markdown", value: tail });
+      }
+    }
+  }
+
+  // Append the open thought if it exists
+  if (openThinkContent.length > 0) {
+    segments.push({ type: "thought", value: openThinkContent });
   }
 
   return segments;
@@ -143,6 +188,48 @@ const normalizeCommandFormatting = (content: string): string => {
   });
 };
 
+function ThinkingProcess({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // If still streaming, just show the animation without content
+  if (isStreaming) {
+    return (
+      <div className="thinking-process streaming">
+        <div className="thinking-summary">
+          <div className="thinking-header">
+            <FaLightbulb className="thinking-icon" />
+            <span className="thinking-label">Thinking</span>
+          </div>
+          <span className="thinking-dots">...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Once done streaming, show the collapsible thought process
+  return (
+    <div className="thinking-process">
+      <div
+        className="thinking-summary"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="thinking-header">
+          {isExpanded ? <FaChevronDown /> : <FaChevronRight />}
+          <span className="thinking-label">Thought Process</span>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="thinking-content">
+          <div className="thinking-content-inner">
+            {content}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ClickableCommand component for executing commands from AI responses
 // Usage: AI can return text with <cmdankou>command</cmdankou> tags
 // These will be rendered as clickable buttons that execute the command
@@ -152,9 +239,10 @@ interface ClickableCommandProps {
   chatTabs: AgentChatTab[];
   activeChatTabId: string | null;
   modelName?: string;
+  isExecMode: boolean;
 }
 
-function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: ClickableCommandProps) {
+function ClickableCommand({ command, chatTabs, activeChatTabId, modelName, isExecMode }: ClickableCommandProps) {
   const { user } = useAuth();
   const [status, setStatus] = useState<'idle' | 'executing' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -175,13 +263,6 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
 
   const handleCommandStatusTransition = useCallback(
     (cmd: Command) => {
-      if (cmd.status === 'pending') {
-        if (status !== 'executing') {
-          setStatus('executing');
-        }
-        return;
-      }
-
       if (cmd.status === 'completed') {
         if (status !== 'success') {
           setErrorMessage('');
@@ -194,7 +275,7 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
             setTrackedCommandId(null);
             setCommandAnchorId(null);
             timeoutRef.current = null;
-          }, 3000);
+          }, 2000);
         }
         return;
       }
@@ -212,13 +293,9 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
             setTrackedCommandId(null);
             setCommandAnchorId(null);
             timeoutRef.current = null;
-          }, 5000);
+          }, 3000);
         }
         return;
-      }
-
-      if (status !== 'executing') {
-        setStatus('executing');
       }
     },
     [clearStatusTimeout, status]
@@ -285,10 +362,9 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
   }, [activeAgentId, clearStatusTimeout]);
 
   const handleExecute = async () => {
-    if (status === 'executing') return;
-    
+    if (status !== 'idle') return;
+
     clearStatusTimeout();
-    setStatus('executing');
     setErrorMessage('');
     setTrackedCommandId(null);
     setCommandAnchorId(null);
@@ -301,7 +377,8 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
           0
         );
         setCommandAnchorId(highestId);
-        sendCommand(activeAgentId, command, `${user?.username || 'operator'} via ${modelName || 'ai'}`);
+        const commandToSend = isExecMode && !command.trim().startsWith('exec ') ? `exec ${command}` : command;
+        sendCommand(activeAgentId, commandToSend, `${user?.username || 'operator'} via ${modelName || 'ai'}`);
       } else {
         sendMessage({
           type: "global_command",
@@ -315,8 +392,8 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
             setStatus('idle');
             setErrorMessage('');
             timeoutRef.current = null;
-          }, 3000);
-        }, 1000);
+          }, 2000);
+        }, 500);
         return;
       }
     } catch (error) {
@@ -328,19 +405,11 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
         setTrackedCommandId(null);
         setCommandAnchorId(null);
         timeoutRef.current = null;
-      }, 5000);
+      }, 3000);
     }
   };
 
   const renderStatusIndicator = () => {
-    if (status === 'executing') {
-      return (
-        <span className="command-status executing">
-          <FaSpinner className="command-status-icon" />
-          Running...
-        </span>
-      );
-    }
     if (status === 'success') {
       return (
         <span className="command-status success">
@@ -368,7 +437,7 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName }: Cli
       </div>
       <div className="command-suggestion-actions">
         <button
-          className="command-run-button"
+          className={`command-run-button ${isExecMode ? 'exec-mode' : ''}`}
           onClick={handleExecute}
           disabled={status === 'executing'}
           title={`${activeTab?.agentId ? `Execute on ${activeTab.agentName || activeTab.agentId}` : 'Execute globally'}: ${command}`}
@@ -502,13 +571,14 @@ const mapConversationMessages = (rawMessages: any[]): ChatMessage[] => {
 const buildAgentContextPrompt = (
   agent: Agent,
   commands: Command[],
-  handlers: any[] = []
+  handlers: any[] = [],
+  isExecMode: boolean = false
 ): string => {
-  const agentHandler = handlers.find(handler => 
-    handler.agentHttpHeaderId === agent.handlerId || 
+  const agentHandler = handlers.find(handler =>
+    handler.agentHttpHeaderId === agent.handlerId ||
     handler.agentName === agent.handlerName
   );
-  
+
   const lines: string[] = [
     "You are assisting a penetration tester using a C2 (Command & Control) framework.",
     "Your role is to help the operator understand and interact with compromised endpoints.",
@@ -520,59 +590,6 @@ const buildAgentContextPrompt = (
     `Status: Last seen ${formatTimestamp(agent.lastSeen)}`,
     `Beacon Interval: ${agent.reconnectInterval || 'unknown'} seconds`,
     "",
-  ];
-  
-  if (agentHandler?.supportedCommands && agentHandler.supportedCommands.length > 0) {
-    lines.push(
-      "=== AVAILABLE COMMANDS ===",
-      "The following base commands are supported by this agent:",
-      ...agentHandler.supportedCommands.map(cmd => `  • ${cmd}`),
-      "",
-      "These commands can accept standard arguments, flags, and paths.",
-      "Examples:",
-      "  • <ankoucmd>ls /home</ankoucmd> - List files with details",
-      "  • <ankoucmd>ps</ankoucmd> - Show all processes",
-      "  • <ankoucmd>cd /etc</ankoucmd> - Change directory",
-      "  • <ankoucmd>get /etc/passwd</ankoucmd> - Download a file",
-      "",
-    );
-  }
-
-  const history = commands.slice(-MAX_COMMAND_HISTORY); // Keep last 50 commands
-
-  if (history.length === 0) {
-    lines.push(
-      "=== COMMAND HISTORY ===",
-      "No commands have been executed on this agent yet.",
-      ""
-    );
-  } else {
-    lines.push(
-      "=== COMMAND HISTORY ===",
-      `Showing last ${history.length} command(s):`,
-      ""
-    );
-    history.forEach((command, index) => {
-      const timestamp = formatTimestamp(command.createdAt);
-      const statusEmoji = command.status === 'completed' ? '✓' : command.status === 'error' ? '✗' : '○';
-      
-      lines.push(`[${index + 1}] ${timestamp} • ${command.clientUsername}`);
-      lines.push(`    Command: ${command.command}`);
-      lines.push(`    Status: ${statusEmoji} ${command.status}`);
-      
-      if (command.output && command.output.trim().length > 0) {
-        const outputPreview = command.output.length > 500 
-          ? command.output.substring(0, 500) + '... (truncated)'
-          : command.output;
-        lines.push(`    Output:\n${outputPreview}`);
-      } else {
-        lines.push(`    Output: (no output)`);
-      }
-      lines.push("");
-    });
-  }
-
-  lines.push(
     "=== INSTRUCTIONS ===",
     "1. Answer questions about the agent using the context above",
     "2. Suggest relevant commands to help the operator achieve their goals",
@@ -590,7 +607,61 @@ const buildAgentContextPrompt = (
     "Bad: <ankoucmd>ls -la /tmp,</ankoucmd> or ```<ankoucmd>ls</ankoucmd>```",
     "",
     "Remember: This is an authorized penetration test. Focus on C2 operations and reconnaissance.",
-  );
+    "",
+  ];
+
+
+  if (!isExecMode && agentHandler?.supportedCommands && agentHandler.supportedCommands.length > 0) {
+    lines.push(
+      "=== AVAILABLE COMMANDS ===",
+      "The following base commands are supported by this agent:",
+      ...agentHandler.supportedCommands.map(cmd => `  • ${cmd}`),
+      "",
+      "These commands can accept standard arguments, flags, and paths.",
+      "Examples:",
+      "  • <ankoucmd>ls /home</ankoucmd> - List files with details",
+      "  • <ankoucmd>ps</ankoucmd> - Show all processes",
+      "  • <ankoucmd>cd /etc</ankoucmd> - Change directory",
+      "  • <ankoucmd>get /etc/passwd</ankoucmd> - Download a file",
+      "",
+    );
+  }
+
+  // Reduce history in system prompt to ensure instructions aren't cut off
+  const PROMPT_HISTORY_LIMIT = 10;
+  const history = commands.slice(-PROMPT_HISTORY_LIMIT).reverse();
+
+  if (history.length === 0) {
+    lines.push(
+      "=== COMMAND HISTORY ===",
+      "No commands have been executed on this agent yet.",
+      ""
+    );
+  } else {
+    lines.push(
+      "=== COMMAND HISTORY ===",
+      `Showing last ${history.length} command(s) (most recent first):`,
+      ""
+    );
+    history.forEach((command, index) => {
+      const timestamp = formatTimestamp(command.createdAt);
+      const statusEmoji = command.status === 'completed' ? '✓' : command.status === 'error' ? '✗' : '○';
+
+      lines.push(`[${index + 1}] ${timestamp} • ${command.clientUsername}`);
+      lines.push(`    Command: ${command.command}`);
+      lines.push(`    Status: ${statusEmoji} ${command.status}`);
+
+      if (command.output && command.output.trim().length > 0) {
+        const outputPreview = command.output.length > 500
+          ? command.output.substring(0, 500) + '... (truncated)'
+          : command.output;
+        lines.push(`    Output:\n${outputPreview}`);
+      } else {
+        lines.push(`    Output: (no output)`);
+      }
+      lines.push("");
+    });
+  }
 
   const finalPrompt = lines.join("\n");
   return finalPrompt;
@@ -739,6 +810,7 @@ export default function AI({ isActive }: AIProps) {
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentFilter, setAgentFilter] = useState("");
+  const [isExecMode, setIsExecMode] = useState(false);
 
   const [chatTabs, setChatTabs] = useState<AgentChatTab[]>(() => loadStoredChatTabs());
   const [activeChatTabId, setActiveChatTabId] = useState<string | null>(() => loadStoredActiveTab());
@@ -748,7 +820,7 @@ export default function AI({ isActive }: AIProps) {
     Record<string, string>
   >(() => loadStoredConversations());
   const { commands: commandState, handlers } = useWebSocket(true);
-  
+
   // Calculate agent status based on last_seen and reconnect_interval
   const calculateStatus = (lastSeen: string, reconnectInterval?: number): string => {
     if (!reconnectInterval || reconnectInterval === 0) {
@@ -758,11 +830,11 @@ export default function AI({ isActive }: AIProps) {
     const lastSeenDate = new Date(lastSeen);
     const now = new Date();
     const diffSeconds = (now.getTime() - lastSeenDate.getTime()) / 1000;
-    
+
     // 200% grace period - very forgiving for network delays and processing time
     const graceMultiplier = 3; // 3x the interval before marking late
     const expectedCheckIn = reconnectInterval * graceMultiplier;
-    
+
     return diffSeconds > expectedCheckIn ? "late" : "online";
   };
 
@@ -772,7 +844,7 @@ export default function AI({ isActive }: AIProps) {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     const diffHours = Math.floor(diffMins / 60);
@@ -780,7 +852,7 @@ export default function AI({ isActive }: AIProps) {
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}d ago`;
   };
-  
+
 
   const markdownComponents = useMemo(
     () => ({
@@ -1020,7 +1092,8 @@ export default function AI({ isActive }: AIProps) {
         const updatedPrompt = buildAgentContextPrompt(
           agentForPrompt,
           clonedCommands,
-          handlers
+          handlers,
+          isExecMode
         );
 
         const updatedMessages =
@@ -1040,7 +1113,7 @@ export default function AI({ isActive }: AIProps) {
 
       return mutated ? nextTabs : prevTabs;
     });
-  }, [commandState, isLoggedIn, handlers]);
+  }, [commandState, isLoggedIn, handlers, isExecMode]);
 
   // Persist chat tabs to localStorage
   useEffect(() => {
@@ -1121,7 +1194,7 @@ export default function AI({ isActive }: AIProps) {
       streamingMessageRef.current = {};
       setError(
         message ||
-          "Open WebUI authentication failed. Please re-enter your URL and JWT token."
+        "Open WebUI authentication failed. Please re-enter your URL and JWT token."
       );
 
       if (typeof window !== "undefined") {
@@ -1291,7 +1364,8 @@ export default function AI({ isActive }: AIProps) {
         const contextPrompt = buildAgentContextPrompt(
           context.agent,
           context.commands,
-          handlers
+          handlers,
+          isExecMode
         );
 
         let conversationId = conversationMap[agent.id] || null;
@@ -1321,18 +1395,18 @@ export default function AI({ isActive }: AIProps) {
           prev.map((tab) =>
             tab.tabId === tabId
               ? {
-                  ...tab,
-                  conversationId,
-                  contextPrompt,
-                  commandHistory: (context.commands ?? []).map((command) => ({
-                    ...command,
-                  })),
-                  agentCreatedAt:
-                    context.agent?.createdAt ?? tab.agentCreatedAt,
-                  messages: existingMessages,
-                  isLoading: false,
-                  error: null,
-                }
+                ...tab,
+                conversationId,
+                contextPrompt,
+                commandHistory: (context.commands ?? []).map((command) => ({
+                  ...command,
+                })),
+                agentCreatedAt:
+                  context.agent?.createdAt ?? tab.agentCreatedAt,
+                messages: existingMessages,
+                isLoading: false,
+                error: null,
+              }
               : tab
           )
         );
@@ -1341,19 +1415,19 @@ export default function AI({ isActive }: AIProps) {
           prev.map((tab) =>
             tab.tabId === tabId
               ? {
-                  ...tab,
-                  isLoading: false,
-                  error:
-                    err instanceof Error
-                      ? err.message
-                      : "Failed to prepare conversation.",
-                }
+                ...tab,
+                isLoading: false,
+                error:
+                  err instanceof Error
+                    ? err.message
+                    : "Failed to prepare conversation.",
+              }
               : tab
           )
         );
       }
     },
-    [conversationMap, fetchAgentContext, fetchConversationById, handlers]
+    [conversationMap, fetchAgentContext, fetchConversationById, handlers, isExecMode]
   );
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -1460,7 +1534,7 @@ export default function AI({ isActive }: AIProps) {
   };
 
   const renderMessageContent = useCallback(
-    (message: ChatMessage) => {
+    (message: ChatMessage, isStreamingMessage: boolean = false) => {
       if (isCommandOutputMessage(message)) {
         const commandText =
           typeof message.metadata.command === "string"
@@ -1476,15 +1550,15 @@ export default function AI({ isActive }: AIProps) {
             : "";
         const statusClass = statusText
           ? (() => {
-              const normalized = statusText.toLowerCase();
-              if (normalized === "completed" || normalized === "success") {
-                return "ai-command-status-complete";
-              }
-              if (normalized === "error" || normalized === "failed") {
-                return "ai-command-status-error";
-              }
-              return "ai-command-status-default";
-            })()
+            const normalized = statusText.toLowerCase();
+            if (normalized === "completed" || normalized === "success") {
+              return "ai-command-status-complete";
+            }
+            if (normalized === "error" || normalized === "failed") {
+              return "ai-command-status-error";
+            }
+            return "ai-command-status-default";
+          })()
           : "ai-command-status-default";
         const outputText =
           typeof message.content === "string" ? message.content : "";
@@ -1545,6 +1619,19 @@ export default function AI({ isActive }: AIProps) {
               chatTabs={chatTabs}
               activeChatTabId={activeChatTabId}
               modelName={selectedModel?.name}
+              isExecMode={isExecMode}
+            />
+          );
+        }
+
+        if (segment.type === "thought") {
+          // Check if this is the last segment and we're streaming - if so, it's still being generated
+          const isThisSegmentStreaming = isStreamingMessage && index === segments.length - 1;
+          return (
+            <ThinkingProcess
+              key={`thought-${keyPrefix}-${index}`}
+              content={segment.value}
+              isStreaming={isThisSegmentStreaming}
             />
           );
         }
@@ -1564,13 +1651,13 @@ export default function AI({ isActive }: AIProps) {
         );
       });
     },
-    [activeChatTabId, chatTabs, markdownComponents]
+    [activeChatTabId, chatTabs, markdownComponents, isExecMode]
   );
 
   const handleOpenAgentTab = (agent: Agent) => {
     // Set the selected agent
     setSelectedAgentId(agent.id);
-    
+
     const existing = chatTabs.find((tab) => tab.agentId === agent.id);
     if (existing) {
       setActiveChatTabId(existing.tabId);
@@ -1620,8 +1707,26 @@ export default function AI({ isActive }: AIProps) {
   };
 
   const handleNewTab = () => {
-    if (!selectedAgentId) {
-      // If no agent is selected, focus on agent list to encourage selection
+    // Try to find an agent to use for the new tab
+    let agentToUse: Agent | undefined;
+
+    // First, try using the selected agent ID
+    if (selectedAgentId) {
+      agentToUse = agents.find(agent => agent.id === selectedAgentId);
+    }
+
+    // If no selected agent, try using the agent from the active tab
+    if (!agentToUse && activeTab) {
+      agentToUse = agents.find(agent => agent.id === activeTab.agentId);
+    }
+
+    // If still no agent and there's only one agent available, use it
+    if (!agentToUse && agents.length === 1) {
+      agentToUse = agents[0];
+    }
+
+    // If we still don't have an agent, prompt user to select one
+    if (!agentToUse) {
       const agentList = document.querySelector('.ai-agent-list');
       if (agentList) {
         agentList.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1629,22 +1734,18 @@ export default function AI({ isActive }: AIProps) {
       return;
     }
 
-    // Find the selected agent
-    const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
-    if (!selectedAgent) return;
-
     // Create a new conversation with the selected agent
-    const tabId = `${selectedAgent.id}-${Date.now()}`;
+    const tabId = `${agentToUse.id}-${Date.now()}`;
     const newTab: AgentChatTab = {
       tabId,
-      agentId: selectedAgent.id,
-      agentName: selectedAgent.name,
-      agentStatus: selectedAgent.status,
-      agentIp: selectedAgent.ip,
-      agentOs: selectedAgent.os,
-      agentLastSeen: selectedAgent.lastSeen,
-      agentCreatedAt: selectedAgent.createdAt,
-      reconnectInterval: selectedAgent.reconnectInterval,
+      agentId: agentToUse.id,
+      agentName: agentToUse.name,
+      agentStatus: agentToUse.status,
+      agentIp: agentToUse.ip,
+      agentOs: agentToUse.os,
+      agentLastSeen: agentToUse.lastSeen,
+      agentCreatedAt: agentToUse.createdAt,
+      reconnectInterval: agentToUse.reconnectInterval,
       conversationId: null, // New conversation
       contextPrompt: "",
       commandHistory: [],
@@ -1657,7 +1758,7 @@ export default function AI({ isActive }: AIProps) {
 
     setChatTabs((prev) => [...prev, newTab]);
     setActiveChatTabId(tabId);
-    initializeAgentTab(tabId, selectedAgent);
+    initializeAgentTab(tabId, agentToUse);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -1691,12 +1792,12 @@ export default function AI({ isActive }: AIProps) {
       prev.map((item) =>
         item.tabId === tab.tabId
           ? {
-              ...item,
-              messages: [...item.messages, userMessage],
-              isStreaming: true,
-              streamingContent: "",
-              error: null,
-            }
+            ...item,
+            messages: [...item.messages, userMessage],
+            isStreaming: true,
+            streamingContent: "",
+            error: null,
+          }
           : item
       )
     );
@@ -1713,15 +1814,18 @@ export default function AI({ isActive }: AIProps) {
         tab.conversationId ?? conversationMap[tab.agentId] ?? null;
 
       // Build message history for the AI
-      const historyMessages = tab.messages.concat(userMessage).map((msg) => ({
+      // Limit to last 20 messages to prevent context window overflow and keep system prompt relevant
+      const MAX_HISTORY_MESSAGES = 20;
+      const allMessages = tab.messages.concat(userMessage);
+      const recentMessages = allMessages.slice(-MAX_HISTORY_MESSAGES).map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));
 
       const payloadMessages =
         tab.contextPrompt.trim().length > 0
-          ? [{ role: "system", content: tab.contextPrompt }, ...historyMessages]
-          : historyMessages;
+          ? [{ role: "system", content: tab.contextPrompt }, ...recentMessages]
+          : recentMessages;
 
       const requestBody: Record<string, unknown> = {
         model: selectedModel.id,
@@ -1772,11 +1876,11 @@ export default function AI({ isActive }: AIProps) {
               prev.map((item) =>
                 item.tabId === tab.tabId
                   ? {
-                      ...item,
-                      messages: [...item.messages, assistantMessage],
-                      isStreaming: false,
-                      streamingContent: "",
-                    }
+                    ...item,
+                    messages: [...item.messages, assistantMessage],
+                    isStreaming: false,
+                    streamingContent: "",
+                  }
                   : item
               )
             );
@@ -1788,13 +1892,13 @@ export default function AI({ isActive }: AIProps) {
                   : item
               )
             );
-      }
+          }
 
-      streamingMessageRef.current[tab.tabId] = "";
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 100);
-      break;
+          streamingMessageRef.current[tab.tabId] = "";
+          setTimeout(() => {
+            textareaRef.current?.focus();
+          }, 100);
+          break;
         }
 
         buffer += decoder.decode(value, { stream: true });
@@ -1817,11 +1921,11 @@ export default function AI({ isActive }: AIProps) {
                 prev.map((item) =>
                   item.tabId === tab.tabId
                     ? {
-                        ...item,
-                        messages: [...item.messages, assistantMessage],
-                        isStreaming: false,
-                        streamingContent: "",
-                      }
+                      ...item,
+                      messages: [...item.messages, assistantMessage],
+                      isStreaming: false,
+                      streamingContent: "",
+                    }
                     : item
                 )
               );
@@ -1901,19 +2005,19 @@ export default function AI({ isActive }: AIProps) {
         prev.map((item) =>
           item.tabId === tab.tabId
             ? {
-                ...item,
-                isStreaming: false,
-                streamingContent: "",
-                error: message,
-                messages: [
-                  ...item.messages,
-                  {
-                    role: "assistant",
-                    content: `Error: ${message}`,
-                    createdAt: new Date().toISOString(),
-                  },
-                ],
-              }
+              ...item,
+              isStreaming: false,
+              streamingContent: "",
+              error: message,
+              messages: [
+                ...item.messages,
+                {
+                  role: "assistant",
+                  content: `Error: ${message}`,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }
             : item
         )
       );
@@ -2080,9 +2184,8 @@ export default function AI({ isActive }: AIProps) {
                     <button
                       key={agent.id}
                       type="button"
-                      className={`ai-agent-item ${
-                        selectedAgentId === agent.id ? "active" : ""
-                      }`}
+                      className={`ai-agent-item ${selectedAgentId === agent.id ? "active" : ""
+                        }`}
                       onClick={() => {
                         setSelectedAgentId(agent.id);
                         handleOpenAgentTab(agent);
@@ -2116,9 +2219,8 @@ export default function AI({ isActive }: AIProps) {
                   <button
                     key={tab.tabId}
                     type="button"
-                    className={`ai-chat-tab ${
-                      tab.tabId === activeChatTabId ? "active" : ""
-                    }`}
+                    className={`ai-chat-tab ${tab.tabId === activeChatTabId ? "active" : ""
+                      }`}
                     onClick={() => setActiveChatTabId(tab.tabId)}
                   >
                     <span className="ai-chat-tab-name">{tab.agentName}</span>
@@ -2158,6 +2260,21 @@ export default function AI({ isActive }: AIProps) {
                       </span>
                     </div>
                     <div className="chat-controls">
+                      <div className="exec-mode-toggle">
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={isExecMode}
+                            onChange={(e) => setIsExecMode(e.target.checked)}
+                          />
+                          <span className="toggle-slider"></span>
+                        </label>
+                        <span className="exec-mode-label">Exec Mode</span>
+                        <div className="exec-mode-tooltip">
+                          <FaQuestion className="exec-mode-help-icon" />
+                          <span className="tooltip-text">AI not using the right commands? Try exec only mode</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2192,9 +2309,8 @@ export default function AI({ isActive }: AIProps) {
                                 )}
                               </div>
                               <div
-                                className={`message-content${
-                                  isCommandMessage ? " command-output" : ""
-                                }`}
+                                className={`message-content${isCommandMessage ? " command-output" : ""
+                                  }`}
                               >
                                 {renderMessageContent(message)}
                               </div>
@@ -2211,7 +2327,7 @@ export default function AI({ isActive }: AIProps) {
                               {renderMessageContent({
                                 role: "assistant",
                                 content: activeTab.streamingContent || "",
-                              })}
+                              }, true)}
                               <span className="streaming-cursor">|</span>
                             </div>
                           </div>
@@ -2237,8 +2353,8 @@ export default function AI({ isActive }: AIProps) {
                           activeTab.isStreaming
                             ? "AI is responding..."
                             : selectedModel
-                            ? "Type your message..."
-                            : "Select a model to start chatting..."
+                              ? "Type your message..."
+                              : "Select a model to start chatting..."
                         }
                         className="chat-input"
                         onKeyDown={(e) => {

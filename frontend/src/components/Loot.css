@@ -1,0 +1,54 @@
+/* Loot Tabs Styling */
+.loot-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.loot-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  border-bottom: 2px solid transparent;
+}
+
+.loot-tab:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.loot-tab.active {
+  color: #10b981;
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.08) 100%);
+  border-bottom: 2px solid #10b981;
+}
+
+.loot-tab .tab-icon {
+  font-size: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.loot-tab:hover .tab-icon {
+  color: rgba(255, 255, 255, 0.95);
+  transform: scale(1.1);
+}
+
+.loot-tab.active .tab-icon {
+  color: #10b981;
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.4));
+}
