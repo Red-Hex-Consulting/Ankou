@@ -35,7 +35,6 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 - Plug in your favorite local or self-hosted LLM; the assistant ingests the full history of command output, builds a shared understanding of the target, and can summarize results, flag anomalies, draft follow-on commands, or watch for notable artifacts while you remain in full control.
 - Guided workflows help less experienced operators learn the rhythm of an engagement: the assistant explains context, proposes vetted commands, suggests decision trees, and highlights common next moves. Veteran operators can focus on higher-level strategy, using AI to sift noisy telemetry, compare hosts, or spot pivot points in seconds.
 - Click-to-run recommendations (using `<cmdankou>` tags) let you execute AI-suggested commands straight from the chat, keeping operations quick yet auditable.
-- The Poly Engine view lets you feed raw loot or binaries through the same OpenWebUI backend for automated triage, detonation scripting, or rapid reverse-engineering notes.
 - Because everything is proxied through OpenWebUI, you can experiment with different models without touching Ankou's core code—great for testing new LLMs, keeping models aligned with mission policy, or swapping to air-gapped models mid-operation.
 
 ![AI Operations Panel](docs/src/AiAgent1.png)
@@ -43,8 +42,8 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 ![AI Decision Support](docs/src/AiAgent2.png)
 
 ### 3. AI-Assisted Binary Diversification
-- Ankou's agent build system includes hooks for polymorphic compilation, allowing you to produce campaign-specific binaries with randomized traits.
-- Diversification logic integrates with command mappings so operators don't need to learn per-variant quirks—tasking stays consistent while binaries look unique on disk.
+- Ankou’s Poly Engine rewrites your implant’s source structure while preserving full functionality. Each build will compile into a meaningfully different binary to reduce signaturability across campaigns.
+- Diversification logic integrates with command mappings so operators don't need to learn per-variant quirks.
 
 ![Poly Engine Workspace](docs/src/polyengine.png)
 
