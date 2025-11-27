@@ -1,5 +1,8 @@
 # ![Ankou Logo](docs/src/ankoulogo.png)
 
+### Join our Discord for discussions, support, suggestions, and development input
+[![Join our Discord](https://img.shields.io/badge/Join_our_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/dkVC3NKsqp)
+
 # Ankou: Next-Generation Command & Control Framework
 
 Ankou is a modern, modular command-and-control (C2) platform designed to let operators move fast without sacrificing tradecraft. Every component—from the transport relay to the desktop client—ships with a quickstart script so you can clone the repository, set your implant keys, run the provided commands, and start experimenting immediately. The built-in AI companion lowers the learning curve for new operators while giving seasoned teams a force multiplier for deep target analysis. Ankou includes three default agents ready for your team to cutomize - you can also create entirely new handlers for a new, fresh, never before seen agent just for your team.
