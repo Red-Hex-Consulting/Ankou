@@ -28,7 +28,7 @@ interface AgentsTableProps {
 }
 
 export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, isActive }: AgentsTableProps) {
-  const { agents, sendCommand } = useWebSocket(isActive);
+  const { agents, handlers, sendCommand } = useWebSocket(isActive);
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; agent: Agent | null }>({
@@ -55,11 +55,11 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     const lastSeenDate = new Date(lastSeen);
     const now = new Date();
     const diffSeconds = (now.getTime() - lastSeenDate.getTime()) / 1000;
-    
+
     // 200% grace period - very forgiving for network delays and processing time
     const graceMultiplier = 3; // 3x the interval before marking late
     const expectedCheckIn = reconnectInterval * graceMultiplier;
-    
+
     return diffSeconds > expectedCheckIn ? "late" : "online";
   };
 
@@ -68,7 +68,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins} minutes ago`;
     const diffHours = Math.floor(diffMins / 60);
@@ -79,8 +79,8 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
 
   const filteredAgents = useMemo(() => {
     if (!agents || !searchTerm) return agents;
-    
-    return agents.filter(agent => 
+
+    return agents.filter(agent =>
       agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       agent.ip.toLowerCase().includes(searchTerm.toLowerCase()) ||
       agent.os.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -140,12 +140,12 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
 
     const agent = contextMenu.agent;
     const username = user?.username || 'operator';
-    
+
     // Queue all commands in order
     script.commands.forEach((command) => {
       sendCommand(agent.id, command, `${username} (script: ${script.name})`);
     });
-    
+
     setContextMenu({ visible: false, x: 0, y: 0, agent: null });
   };
 
@@ -173,13 +173,13 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
               reject(new Error('Invalid file data'));
               return;
             }
-            
+
             // Convert ArrayBuffer to hex string
             const bytes = new Uint8Array(arrayBuffer);
             const hex = Array.from(bytes)
               .map(byte => byte.toString(16).padStart(2, '0'))
               .join('');
-            
+
             resolve(hex);
           } catch (err) {
             reject(err);
@@ -197,7 +197,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
       // Create the put command with proper escaping
       const escapedHex = fileHex.replace(/"/g, '\\"');
       const putCommand = `put "${remotePath}" "${escapedHex}"`;
-      
+
       // Send command to the specific agent
       if (sendCommand) {
         const username = user?.username || 'operator';
@@ -209,7 +209,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
       setShowFileDialog(false);
       setSelectedAgent(null);
       setSelectedFile(null);
-      
+
       // Clear the file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -231,7 +231,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     setShowFileDialog(false);
     setSelectedAgent(null);
     setSelectedFile(null);
-    
+
     // Clear the file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -262,13 +262,13 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
               reject(new Error('Invalid file data'));
               return;
             }
-            
+
             // Convert ArrayBuffer to hex string
             const bytes = new Uint8Array(arrayBuffer);
             const hex = Array.from(bytes)
               .map(byte => byte.toString(16).padStart(2, '0'))
               .join('');
-            
+
             resolve(hex);
           } catch (err) {
             reject(err);
@@ -285,7 +285,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
 
       // Create the injectsc command
       const injectCommand = `injectsc "${shellcodeHex}"`;
-      
+
       // Send command to the specific agent
       if (sendCommand) {
         const username = user?.username || 'operator';
@@ -296,7 +296,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
       setShowInjectModal(false);
       setSelectedAgent(null);
       setSelectedShellcodeFile(null);
-      
+
       // Clear the file input
       if (shellcodeInputRef.current) {
         shellcodeInputRef.current.value = '';
@@ -316,7 +316,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     setShowInjectModal(false);
     setSelectedAgent(null);
     setSelectedShellcodeFile(null);
-    
+
     // Clear the file input
     if (shellcodeInputRef.current) {
       shellcodeInputRef.current.value = '';
@@ -336,7 +336,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
             className="search-input"
           />
         </div>
-        
+
         <div className="agent-stats">
           <FaDollarSign className="stats-icon" />
           <span className="stats-text">
@@ -344,7 +344,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
           </span>
         </div>
       </div>
-      
+
       <table className="agents-table">
         <thead>
           <tr>
@@ -359,7 +359,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         </thead>
         <tbody>
           {filteredAgents && filteredAgents.map((agent) => (
-            <tr 
+            <tr
               key={agent.id}
               className="agent-row"
               onClick={() => onAgentClick(agent)}
@@ -392,8 +392,8 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
               <td className="agent-ip">{agent.ip || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
               <td className="agent-os">{agent.os || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
               <td className="agent-callback">
-                {agent.reconnectInterval !== undefined && agent.reconnectInterval > 0 
-                  ? `${agent.reconnectInterval}s` 
+                {agent.reconnectInterval !== undefined && agent.reconnectInterval > 0
+                  ? `${agent.reconnectInterval}s`
                   : <FaQuestion style={{ color: 'var(--text-secondary)' }} />
                 }
               </td>
@@ -407,6 +407,8 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         isVisible={contextMenu.visible}
         x={contextMenu.x}
         y={contextMenu.y}
+        agent={contextMenu.agent}
+        handlers={handlers}
         onClose={handleContextMenuClose}
         onPut={handleContextMenuPut}
         onInject={handleContextMenuInject}

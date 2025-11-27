@@ -684,6 +684,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 12px 16px;
 }
 
 .ai-command-line {
@@ -732,7 +733,7 @@
 
 .ai-command-output {
   margin: 0;
-  padding: 10px 12px;
+  padding: 12px 16px;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -741,6 +742,8 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary);
+  overflow-x: auto;
+  min-height: 24px;
 }
 
 .ai-command-output-empty {
@@ -789,6 +792,7 @@
 }
 
 @keyframes blink {
+
   0%,
   50% {
     opacity: 1;
@@ -954,10 +958,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
+
   50% {
     opacity: 0.7;
     box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
@@ -995,11 +1002,11 @@
   display: block;
 }
 
-.markdown-segment > :first-child {
+.markdown-segment> :first-child {
   margin-top: 0;
 }
 
-.markdown-segment > :last-child {
+.markdown-segment> :last-child {
   margin-bottom: 0;
 }
 
@@ -1110,4 +1117,280 @@
 
 .ai-chat-tab-new:active {
   transform: scale(0.97);
+}
+
+/* Exec Mode Styles */
+.command-run-button.exec-mode {
+  background-color: #8b5cf6;
+  /* Violet-500 */
+  border-color: #8b5cf6;
+}
+
+.command-run-button.exec-mode:hover:not(:disabled) {
+  background-color: #7c3aed;
+  /* Violet-600 */
+  border-color: #7c3aed;
+}
+
+.exec-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-secondary);
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked+.toggle-slider {
+  background-color: #8b5cf6;
+  /* Violet-500 */
+  border-color: #8b5cf6;
+}
+
+input:checked+.toggle-slider:before {
+  transform: translateX(14px);
+  background-color: white;
+}
+
+.exec-mode-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.exec-mode-tooltip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  cursor: help;
+}
+
+.exec-mode-help-icon {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  transition: color 0.2s ease;
+}
+
+.exec-mode-tooltip:hover .exec-mode-help-icon {
+  color: var(--text-primary);
+}
+
+.tooltip-text {
+  visibility: hidden;
+  width: 200px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  text-align: center;
+  border-radius: 6px;
+  padding: 8px;
+  position: absolute;
+  z-index: 100;
+  bottom: 125%;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  pointer-events: none;
+}
+
+.exec-mode-tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+.tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 10px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: var(--border-color) transparent transparent transparent;
+}
+
+/* Thinking Process Styles */
+.thinking-process {
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background-color: rgba(148, 163, 184, 0.05);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.thinking-process.streaming {
+  background-color: rgba(255, 193, 7, 0.08);
+  border-color: rgba(255, 193, 7, 0.3);
+}
+
+.thinking-process.streaming .thinking-summary {
+  cursor: default;
+}
+
+.thinking-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  background-color: rgba(148, 163, 184, 0.05);
+  transition: background-color 0.2s ease;
+}
+
+.thinking-summary:hover {
+  background-color: rgba(148, 163, 184, 0.1);
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.thinking-icon {
+  color: #ffc107;
+  animation: pulse 2s infinite;
+}
+
+.thinking-label {
+  font-style: italic;
+}
+
+.thinking-dots {
+  color: var(--text-tertiary);
+  font-size: 14px;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+  margin-left: auto;
+}
+
+.thinking-content {
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.thinking-content-inner {
+  padding: 12px;
+  white-space: pre-wrap;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* Improved Chat Aesthetics */
+.chat-messages {
+  padding: 24px 20px;
+  /* Increased padding */
+  gap: 20px;
+  /* Increased gap between messages */
+}
+
+.message {
+  gap: 16px;
+  /* Increased gap between icon and content */
+  max-width: 85%;
+  /* Slightly wider messages */
+}
+
+.message-content {
+  padding: 16px 20px;
+  /* More breathing room inside messages */
+  border-radius: 16px;
+  /* Softer corners */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  /* Subtle shadow */
+  font-size: 13px;
+  /* Slightly larger text */
+}
+
+.message.user .message-content {
+  background-color: var(--accent-red);
+  color: white;
+  border: 1px solid var(--accent-red);
+  /* Match border to bg */
+  border-bottom-right-radius: 4px;
+}
+
+.message.assistant .message-content {
+  background-color: var(--bg-tertiary);
+  border-bottom-left-radius: 4px;
+}
+
+.message-icon {
+  width: 32px;
+  /* Slightly larger icons */
+  height: 32px;
+  margin-top: 2px;
+}
+
+.user-icon,
+.bot-icon {
+  font-size: 16px;
+}
+
+/* Refined Code Blocks */
+.message-content pre,
+.code-block {
+  border-radius: 8px;
+  margin: 12px 0;
+  border: 1px solid var(--border-color);
+  background-color: rgba(0, 0, 0, 0.2);
+  /* Darker background for code */
+}
+
+/* Refined Command Output */
+.ai-command-output {
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 8px;
+  background-color: rgba(0, 0, 0, 0.2);
 }

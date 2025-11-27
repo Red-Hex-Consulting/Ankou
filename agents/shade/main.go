@@ -126,13 +126,11 @@ func main() {
 		time.Sleep(time.Duration(initialJitter) * time.Second)
 	}
 
-	agentName := fmt.Sprintf("Shade-%s", agentID[:8])
-
 	osInfo := fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH)
 
 	// Start persistent SSH connection loop
 	for {
-		if err := connectAndServe(agentID, agentName, osInfo); err != nil {
+		if err := connectAndServe(agentID, agentID, osInfo); err != nil {
 			// Back off for full reconnect interval to avoid bad state
 			// This ensures the next connection attempt is a fresh, full SSH connect
 			time.Sleep(time.Duration(reconnectInterval) * time.Second)

