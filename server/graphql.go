@@ -544,6 +544,27 @@ func createSchema() (graphql.Schema, error) {
 					return true, nil
 				},
 			},
+			"removeAgent": &graphql.Field{
+				Type: graphql.Boolean,
+				Args: graphql.FieldConfigArgument{
+					"agentId": &graphql.ArgumentConfig{
+						Type: graphql.NewNonNull(graphql.String),
+					},
+				},
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					agentID, _ := p.Args["agentId"].(string)
+					if agentID == "" {
+						return false, fmt.Errorf("agentId is required")
+					}
+
+					if err := removeAgent(agentID); err != nil {
+						return false, err
+					}
+
+					broadcastAgents()
+					return true, nil
+				},
+			},
 			"createUser": &graphql.Field{
 				Type: userType,
 				Args: graphql.FieldConfigArgument{

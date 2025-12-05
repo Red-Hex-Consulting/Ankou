@@ -1,4 +1,4 @@
-.shellcode-warning {
+.remove-agent-warning {
   color: var(--warning, #ff9800);
   background: rgba(255, 152, 0, 0.1);
   padding: 12px;
@@ -6,25 +6,34 @@
   border: 1px solid rgba(255, 152, 0, 0.3);
   display: block;
   margin-top: 0;
+  line-height: 1.6;
 }
 
-.shellcode-warning .warning-icon {
+.remove-agent-warning .warning-icon {
   color: #ff9800;
   margin-right: 6px;
   vertical-align: middle;
 }
 
-.shellcode-inject-btn {
+.remove-agent-warning strong {
+  color: #4caf50;
+}
+
+.remove-agent-icon {
+  color: #ff5252 !important;
+}
+
+.remove-agent-btn {
   background: linear-gradient(135deg, #d32f2f 0%, #c62828 100%);
 }
 
-.shellcode-inject-btn:hover:not(:disabled) {
+.remove-agent-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #e53935 0%, #d32f2f 100%);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(211, 47, 47, 0.3);
 }
 
-.shellcode-inject-btn:active:not(:disabled) {
+.remove-agent-btn:active:not(:disabled) {
   transform: translateY(0);
 }
 

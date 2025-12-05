@@ -1,37 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { FaSyringe, FaTimes, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { FaTrashAlt, FaTimes, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 
-interface ShellcodeInjectModalProps {
+interface RemoveAgentModalProps {
   isVisible: boolean;
-  fileName: string;
   agentName: string;
+  agentId: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ShellcodeInjectModal({ 
+export default function RemoveAgentModal({ 
   isVisible, 
-  fileName, 
-  agentName, 
+  agentName,
+  agentId,
   onConfirm, 
   onCancel 
-}: ShellcodeInjectModalProps) {
-  const [isInjecting, setIsInjecting] = useState(false);
+}: RemoveAgentModalProps) {
+  const [isRemoving, setIsRemoving] = useState(false);
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isVisible) {
-      setIsInjecting(false);
+      setIsRemoving(false);
     }
   }, [isVisible]);
 
   const handleConfirm = () => {
-    setIsInjecting(true);
+    setIsRemoving(true);
     onConfirm();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !isInjecting) {
+    if (e.key === 'Enter' && !isRemoving) {
       handleConfirm();
     } else if (e.key === 'Escape') {
       onCancel();
@@ -44,7 +43,7 @@ export default function ShellcodeInjectModal({
     <div className="file-upload-modal-overlay" onKeyDown={handleKeyDown}>
       <div className="file-upload-modal">
         <div className="file-upload-modal-header">
-          <h3>Inject Shellcode into Agent</h3>
+          <h3>Remove Agent</h3>
           <button className="file-upload-modal-close" onClick={onCancel}>
             <FaTimes />
           </button>
@@ -52,17 +51,19 @@ export default function ShellcodeInjectModal({
 
         <div className="file-upload-modal-content">
           <div className="file-upload-info">
-            <FaSyringe className="file-upload-icon" />
+            <FaTrashAlt className="file-upload-icon remove-agent-icon" />
             <div className="file-upload-details">
-              <div className="file-name">{fileName}</div>
-              <div className="agent-name">Target: {agentName}</div>
+              <div className="file-name">{agentName || 'Unknown Agent'}</div>
+              <div className="agent-name">ID: {agentId}</div>
             </div>
           </div>
 
           <div className="file-upload-form">
-            <small className="file-upload-help shellcode-warning">
-              <FaExclamationTriangle className="warning-icon" /> Warning: This will inject the selected shellcode into the agent process.
-              Make sure the shellcode is valid and properly formatted as hex.
+            <small className="file-upload-help remove-agent-warning">
+              <FaExclamationTriangle className="warning-icon" /> Are you sure you want to remove this agent from the dashboard?
+              <br /><br />
+              <strong>Note:</strong> Agent data (command history, loot files) will be preserved in the database. 
+              The agent will simply be hidden from view.
             </small>
           </div>
 
@@ -70,24 +71,24 @@ export default function ShellcodeInjectModal({
             <button
               className="file-upload-cancel"
               onClick={onCancel}
-              disabled={isInjecting}
+              disabled={isRemoving}
             >
               Cancel
             </button>
             <button
-              className="file-upload-confirm shellcode-inject-btn"
+              className="file-upload-confirm remove-agent-btn"
               onClick={handleConfirm}
-              disabled={isInjecting}
+              disabled={isRemoving}
             >
-              {isInjecting ? (
+              {isRemoving ? (
                 <>
                   <FaCheckCircle className="uploading-icon" />
-                  Injecting...
+                  Removing...
                 </>
               ) : (
                 <>
-                  <FaSyringe />
-                  Inject Shellcode
+                  <FaTrashAlt />
+                  Remove Agent
                 </>
               )}
             </button>

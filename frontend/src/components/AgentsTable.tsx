@@ -5,9 +5,11 @@ import { useState, useMemo, useRef } from "react";
 import ContextMenu from "./ContextMenu";
 import FileUploadModal from "./FileUploadModal";
 import ShellcodeInjectModal from "./ShellcodeInjectModal";
+import RemoveAgentModal from "./RemoveAgentModal";
 import "./ContextMenu.css";
 import "./FileUploadModal.css";
 import "./ShellcodeInjectModal.css";
+import "./RemoveAgentModal.css";
 
 interface Agent {
   id: string;
@@ -28,7 +30,7 @@ interface AgentsTableProps {
 }
 
 export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, isActive }: AgentsTableProps) {
-  const { agents, handlers, sendCommand } = useWebSocket(isActive);
+  const { agents, handlers, sendCommand, sendMessage } = useWebSocket(isActive);
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; agent: Agent | null }>({
@@ -40,6 +42,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showInjectModal, setShowInjectModal] = useState(false);
+  const [showRemoveModal, setShowRemoveModal] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedShellcodeFile, setSelectedShellcodeFile] = useState<File | null>(null);
@@ -147,6 +150,31 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     });
 
     setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+  };
+
+  const handleContextMenuRemove = () => {
+    if (contextMenu.agent) {
+      setSelectedAgent(contextMenu.agent);
+      setShowRemoveModal(true);
+    }
+    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+  };
+
+  const handleRemoveConfirm = () => {
+    if (!selectedAgent || !sendMessage) return;
+
+    sendMessage({
+      type: 'remove_agent',
+      agentId: selectedAgent.id
+    });
+
+    setShowRemoveModal(false);
+    setSelectedAgent(null);
+  };
+
+  const handleRemoveCancel = () => {
+    setShowRemoveModal(false);
+    setSelectedAgent(null);
   };
 
   // Handle file selection
@@ -413,6 +441,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         onPut={handleContextMenuPut}
         onInject={handleContextMenuInject}
         onScriptExecute={handleScriptExecute}
+        onRemove={handleContextMenuRemove}
       />
 
       {/* Hidden file input for file uploads */}
@@ -449,6 +478,15 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         agentName={selectedAgent?.name || ''}
         onConfirm={handleInjectConfirm}
         onCancel={handleInjectCancel}
+      />
+
+      {/* Remove agent confirmation modal */}
+      <RemoveAgentModal
+        isVisible={showRemoveModal}
+        agentName={selectedAgent?.name || ''}
+        agentId={selectedAgent?.id || ''}
+        onConfirm={handleRemoveConfirm}
+        onCancel={handleRemoveCancel}
       />
     </div>
   );
