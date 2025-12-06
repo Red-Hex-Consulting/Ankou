@@ -251,3 +251,30 @@ func broadcastCommandUpdate(agentID string) {
 		}
 	}
 }
+
+func handleRemoveAgent(client *Client, msg map[string]interface{}) {
+	agentID, ok := msg["agentId"].(string)
+	if !ok || agentID == "" {
+		client.WriteJSON(map[string]interface{}{
+			"type":    "error",
+			"message": "Invalid agentId",
+		})
+		return
+	}
+
+	if err := removeAgent(agentID); err != nil {
+		log.Printf("Error removing agent: %v", err)
+		client.WriteJSON(map[string]interface{}{
+			"type":    "error",
+			"message": "Failed to remove agent",
+		})
+		return
+	}
+
+	client.WriteJSON(map[string]interface{}{
+		"type":    "agent_removed",
+		"agentId": agentID,
+	})
+
+	broadcastAgents()
+}

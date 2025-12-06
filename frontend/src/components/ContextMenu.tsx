@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUpload, FaSyringe, FaTimes, FaChevronRight, FaCog, FaTerminal } from 'react-icons/fa';
+import { FaUpload, FaSyringe, FaTimes, FaChevronRight, FaCog, FaTerminal, FaTrashAlt } from 'react-icons/fa';
 import { getScripts } from './Scripts';
 
 interface Script {
@@ -21,9 +21,10 @@ interface ContextMenuProps {
   onPut: () => void;
   onInject: () => void;
   onScriptExecute: (script: Script) => void;
+  onRemove: () => void;
 }
 
-export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScriptExecute }: ContextMenuProps) {
+export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScriptExecute, onRemove }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState({ x, y });
   const [scriptsExpanded, setScriptsExpanded] = useState(false);
@@ -184,6 +185,12 @@ export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose,
             )}
           </div>
         )}
+      </div>
+
+      <div className="context-menu-divider" />
+      <div className="context-menu-item context-menu-item-danger" onClick={onRemove}>
+        <FaTrashAlt className="context-menu-icon context-menu-icon-danger" />
+        <span>Remove Agent</span>
       </div>
     </div>
   );

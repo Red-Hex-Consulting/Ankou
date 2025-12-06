@@ -107,3 +107,20 @@
 .context-menu-item.disabled:hover {
   background: transparent;
 }
+
+/* Danger styling for remove action */
+.context-menu-item-danger {
+  color: #ff5252;
+}
+
+.context-menu-item-danger:hover {
+  background: rgba(255, 82, 82, 0.15);
+}
+
+.context-menu-icon-danger {
+  color: #ff5252 !important;
+}
+
+.context-menu-item-danger:hover .context-menu-icon-danger {
+  color: #ff6b6b !important;
+}

@@ -735,6 +735,11 @@ func main() {
 			log.Printf("Warning: unable to add reconnect_interval column: %v", err)
 		}
 	}
+	if _, err := db.Exec("ALTER TABLE agents ADD COLUMN is_removed BOOLEAN DEFAULT 0"); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			log.Printf("Warning: unable to add is_removed column: %v", err)
+		}
+	}
 
 	// Add file_type column if it doesn't exist (migration for existing databases)
 	_, err = db.Exec("ALTER TABLE loot_files ADD COLUMN file_type TEXT")
@@ -898,8 +903,6 @@ func handleGraphQLMessage(client *Client, msg map[string]interface{}) {
 		return
 	}
 
-	log.Printf("Executing GraphQL query: %s", query)
-
 	// Execute GraphQL query
 	schema, err := createSchema()
 	if err != nil {
@@ -915,8 +918,6 @@ func handleGraphQLMessage(client *Client, msg map[string]interface{}) {
 		Schema:        schema,
 		RequestString: query,
 	})
-
-	log.Printf("GraphQL result: %+v", result)
 
 	client.WriteJSON(map[string]interface{}{
 		"id":   msg["id"],
@@ -2001,6 +2002,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			handleLootFileRequest(client, msg)
 		case "pong":
 			client.UpdatePong()
+		case "remove_agent":
+			handleRemoveAgent(client, msg)
 		}
 	}
 }

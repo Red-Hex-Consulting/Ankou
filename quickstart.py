@@ -186,10 +186,10 @@ def main():
     
     # Generate cryptographic keys
     print("\n[*] Generating cryptographic keys...")
-    jwt_secret = generate_random_key(64)      # 128 hex chars (64 bytes)
-    server_hmac_key = generate_random_key(32)   # 64 hex chars (32 bytes) - for server HMAC_KEY and relay SERVER_HMAC_KEY
-    agent_hmac_key = generate_random_key(32)   # 64 hex chars (32 bytes) - for relay AGENT_HMAC_KEY (different from server key)
-    registration_key = generate_random_hex(16) # 32 hex chars
+    jwt_secret = generate_random_key(64)
+    server_hmac_key = generate_random_key(32)
+    agent_hmac_key = generate_random_key(32)
+    registration_key = generate_random_hex(16)
     print("[+] Generated JWT secret (128 chars)")
     print("[+] Generated server HMAC key (64 chars)")
     print("[+] Generated agent HMAC key (64 chars)")
@@ -236,12 +236,14 @@ def main():
     print("      cd ghost-relay")
     print("      go run .")
     print()
-    print("   3. Access the operator interface:")
+    print("   3. Launch the Electron operator client from Github Releases or:")
+    print("      cd frontend")
+    print("      npm install; npm run build; npm run electron")
+    print()
     if c2_operator_interface == "0.0.0.0":
-        print("      • Open your browser to https://<your-ip>:" + str(c2_operator_port))
+        print("      • Connect to https://<your-ip>:" + str(c2_operator_port))
     else:
-        print(f"      • Open your browser to https://{c2_operator_interface}:{c2_operator_port}")
-    print("      • Accept the self-signed certificate warning")
+        print(f"      • Connect to https://{c2_operator_interface}:{c2_operator_port}")
     print("      • Use the registration key from the Configuration Summary above")
     print()
     print("   4. Build and deploy agents:")

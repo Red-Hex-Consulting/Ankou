@@ -36,7 +36,7 @@ func createLogsTable() error {
 }
 
 func getAllAgents() ([]Agent, error) {
-	rows, err := db.Query("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval FROM agents")
+	rows, err := db.Query("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval FROM agents WHERE is_removed = 0 OR is_removed IS NULL")
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +60,11 @@ func getAllAgents() ([]Agent, error) {
 		agents = append(agents, agent)
 	}
 	return agents, nil
+}
+
+func removeAgent(agentID string) error {
+	_, err := db.Exec("UPDATE agents SET is_removed = 1 WHERE id = ?", agentID)
+	return err
 }
 
 func getAgentByID(agentID string) (*Agent, error) {
