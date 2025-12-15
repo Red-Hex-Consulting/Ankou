@@ -381,39 +381,53 @@ Each tool call is applied sequentially. Be precise and conservative.`;
 
           if (functionName === "replace_text") {
             const { old_text, new_text, description } = args;
+            let success = false;
+            let responseMessage = "";
+            
             if (!old_text || !new_text) {
               addLog('Invalid replace_text call: missing old_text or new_text', 'error');
+              responseMessage = "Failed: missing required parameters";
             } else if (currentContent.includes(old_text)) {
               currentContent = currentContent.replace(old_text, new_text);
               addLog(description || 'Text replaced', 'success');
               changeCount++;
+              success = true;
+              responseMessage = "Success: text replaced";
             } else {
               const preview = old_text.length > 50 ? old_text.substring(0, 50) + '...' : old_text;
               addLog(`Could not find text to replace: "${preview}"`, 'error');
+              responseMessage = `Failed: could not find old_text in file`;
             }
             
             conversationMessages.push({
               role: "tool",
               tool_call_id: toolCall.id,
-              content: currentContent.includes(new_text) ? "Success" : "Text not found"
+              content: responseMessage
             });
           } else if (functionName === "insert_text") {
             const { after, text, description } = args;
+            let success = false;
+            let responseMessage = "";
+            
             if (!after || !text) {
               addLog('Invalid insert_text call: missing after or text', 'error');
+              responseMessage = "Failed: missing required parameters";
             } else if (currentContent.includes(after)) {
               currentContent = currentContent.replace(after, after + text);
               addLog(description || 'Text inserted', 'success');
               changeCount++;
+              success = true;
+              responseMessage = "Success: text inserted";
             } else {
               const preview = after.length > 50 ? after.substring(0, 50) + '...' : after;
               addLog(`Could not find anchor text: "${preview}"`, 'error');
+              responseMessage = "Failed: could not find anchor text in file";
             }
             
             conversationMessages.push({
               role: "tool",
               tool_call_id: toolCall.id,
-              content: "Success"
+              content: responseMessage
             });
           }
         }
