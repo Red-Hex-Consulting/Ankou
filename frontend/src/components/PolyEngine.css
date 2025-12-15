@@ -202,13 +202,57 @@
   font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
   font-size: 12px;
   line-height: 1.4;
-  max-height: 500px;
 }
 
 .poly-engine-log-entry {
-  margin-bottom: 4px;
+  margin-bottom: 8px;
   color: var(--text-primary);
   word-break: break-all;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+
+.poly-engine-log-entry .log-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.poly-engine-log-entry .log-message {
+  flex: 1;
+}
+
+/* Log type styling */
+.log-type-success {
+  color: var(--success-green);
+}
+
+.log-type-error {
+  color: var(--danger-red);
+}
+
+.log-type-complete {
+  color: var(--success-green);
+  font-weight: 600;
+}
+
+.log-type-info {
+  color: var(--text-primary);
+}
+
+/* Icon colors */
+.log-icon-success {
+  color: var(--success-green);
+}
+
+.log-icon-error {
+  color: var(--danger-red);
+}
+
+.log-icon-complete {
+  color: var(--success-green);
 }
 
 .poly-engine-logs-empty {
@@ -464,6 +508,46 @@
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.1);
 }
 
+/* Mode Selection */
+.mode-selection {
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 100%;
+}
+
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.mode-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--accent-red);
+}
+
+.mode-toggle span {
+  user-select: none;
+}
+
+.mode-description {
+  margin: 0;
+  padding-left: 28px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Processing Section */
 .processing-section {
   margin-bottom: 16px;
@@ -496,6 +580,8 @@
 .button-container {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 12px;
   margin: 20px 0;
 }
 
@@ -526,6 +612,29 @@
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Stop Button */
+.stop-btn {
+  padding: 12px 24px;
+  background-color: #6b7280;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 100px;
+}
+
+.stop-btn:hover {
+  background-color: #4b5563;
+  transform: translateY(-1px);
 }
 
 /* Error Message */

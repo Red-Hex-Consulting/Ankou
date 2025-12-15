@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { FaUpload, FaDownload, FaSpinner, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { FaUpload, FaDownload, FaSpinner, FaCheckCircle, FaExclamationTriangle, FaTimes } from 'react-icons/fa';
+import { FiCheck, FiX, FiCheckCircle } from 'react-icons/fi';
 import { SiOllama } from 'react-icons/si';
 import './PolyEngine.css';
 
@@ -26,7 +27,9 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<Array<{message: string, type?: 'success' | 'error' | 'complete' | 'info'}>>([]);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [useToolCalling, setUseToolCalling] = useState(true);
 
   // Global error handler
   useEffect(() => {
@@ -54,9 +57,9 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     return url.endsWith("/") ? url : `${url}/`;
   }, [url]);
 
-  const addLog = useCallback((message: string) => {
+  const addLog = useCallback((message: string, type?: 'success' | 'error' | 'complete' | 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    setLogs(prev => [...prev, `[${timestamp}] ${message}`]);
+    setLogs(prev => [...prev, { message: `[${timestamp}] ${message}`, type: type || 'info' }]);
   }, []);
 
   const loadModels = useCallback(async (engineUrl: string, token: string) => {
@@ -199,6 +202,253 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     }
   };
 
+  const processFileWithTools = async (fileContent: string, controller: AbortController, fileName: string) => {
+    // Define tools for the AI to edit the file
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "replace_text",
+          description: "Replace a specific text string in the file with new text. Use this to change variable names, function names, string literals, or any other text.",
+          parameters: {
+            type: "object",
+            properties: {
+              old_text: {
+                type: "string",
+                description: "The exact text to find and replace. Must be unique enough to match only the intended location."
+              },
+              new_text: {
+                type: "string",
+                description: "The new text to replace it with"
+              },
+              description: {
+                type: "string",
+                description: "Brief description of what this change does (e.g., 'rename variable foo to bar')"
+              }
+            },
+            required: ["old_text", "new_text", "description"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "insert_text",
+          description: "Insert new text after a specific anchor string. Use this to add comments, new lines, or other additions.",
+          parameters: {
+            type: "object",
+            properties: {
+              after: {
+                type: "string",
+                description: "The anchor text to insert after. Must be unique."
+              },
+              text: {
+                type: "string",
+                description: "The text to insert"
+              },
+              description: {
+                type: "string",
+                description: "Brief description of what this change does"
+              }
+            },
+            required: ["after", "text", "description"]
+          }
+        }
+      }
+    ];
+
+    const systemPrompt = `You are a code transformation engine for security tooling. Your job is to modify code to change its hash while maintaining EXACT functionality.
+
+CRITICAL - DO NOT CHANGE:
+- API endpoints, URLs, or network addresses
+- Serialization formats or data structures (e.g., JSON keys, protocol formats, markers like "LOOT_ENTRIES")
+- Control flow or logic
+- Function signatures or interfaces
+- Import statements or dependencies
+- Cryptographic operations or keys
+- Any hardcoded values that affect runtime behavior
+
+SAFE CHANGES (High Confidence Only):
+1. For scripting languages (JavaScript, Python, PHP):
+   - Rename local variables to synonyms (e.g., userData → userInfo, count → total)
+   - Modify or add comments with different wording
+   - Reorder independent function declarations
+   - Change quote styles (' vs ") where it doesn't affect functionality
+
+2. For compiled languages (Go, Rust, C/C++, etc.):
+   - Reorder independent function/struct declarations
+   - Add or modify whitespace and formatting
+   - Reorder import statements (if language allows)
+   - Rename unexported/private variables ONLY if highly confident
+
+3. Universal safe changes:
+   - Reorder independent code blocks (functions, classes)
+   - Adjust indentation or formatting
+   - Add blank lines between sections
+
+Make 3-5 HIGH CONFIDENCE changes only. Quality over quantity. When in doubt, skip the change.
+
+WORKFLOW:
+1. Analyze the file and identify 3-5 safe changes
+2. Call replace_text or insert_text for EACH change
+3. When done making changes, simply stop calling tools
+
+Example:
+- replace_text(old="userData", new="userInfo", description="rename variable")
+- replace_text(old="count", new="total", description="rename counter")
+- replace_text(old="fetchData", new="retrieveData", description="rename function")
+- (no more tool calls - done)
+
+Each tool call is applied sequentially. Be precise and conservative.`;
+
+    // Detect file type
+    const fileExt = fileName.split('.').pop()?.toLowerCase() || 'unknown';
+    const isScriptingLanguage = ['js', 'jsx', 'ts', 'tsx', 'py', 'php', 'rb', 'pl'].includes(fileExt);
+    const languageContext = isScriptingLanguage 
+      ? `This is a .${fileExt} file (scripting language). Variable/function renaming is safe.`
+      : `This is a .${fileExt} file. Use conservative transforms only (reordering, formatting).`;
+
+    let currentContent = fileContent;
+    const conversationMessages: any[] = [
+      { role: "system", content: systemPrompt },
+      {
+        role: "user",
+        content: `${message ? `Additional requirements: ${message}\n\n` : ''}${languageContext}\n\nAnalyze this file and make 3-5 conservative changes:\n1. Call replace_text or insert_text for each change\n2. When done, simply stop calling tools\n\nMake all your changes in your first response.\n\nFile (${fileContent.length} characters):\n\`\`\`\n${fileContent}\n\`\`\``
+      }
+    ];
+
+    let iterationCount = 0;
+    const maxIterations = 2; // Allow 1 retry if AI doesn't use tools initially
+    let isFinished = false;
+    let changeCount = 0;
+
+    addLog('Using tool-calling mode for intelligent file editing');
+    addLog(`File size: ${fileContent.length} characters`);
+    addLog(languageContext);
+
+    while (iterationCount < maxIterations && !isFinished) {
+      iterationCount++;
+      setProcessingProgress(30 + (iterationCount * 30));
+
+      const response = await fetch(`${normalisedOpenWebUIUrl}api/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: selectedModel.id,
+          messages: conversationMessages,
+          tools: tools,
+          tool_choice: "auto",
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`AI processing failed: ${response.status}`);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        addLog('Failed to parse AI response. Model may not be compatible.', 'error');
+        throw new Error('TOOL_CALLING_NOT_SUPPORTED');
+      }
+      
+      // Check if model doesn't support tool calling
+      if (!data || !data.choices || data.choices.length === 0) {
+        addLog('Model does not support tool calling. Switching to legacy mode...', 'error');
+        throw new Error('TOOL_CALLING_NOT_SUPPORTED');
+      }
+      
+      const choice = data.choices[0];
+      
+      if (!choice || !choice.message) {
+        throw new Error('Invalid response from AI service');
+      }
+
+      const assistantMessage = choice.message;
+      conversationMessages.push(assistantMessage);
+
+      // Check if AI wants to call tools
+      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        for (const toolCall of assistantMessage.tool_calls) {
+          const functionName = toolCall.function.name;
+          const args = JSON.parse(toolCall.function.arguments);
+
+          if (functionName === "replace_text") {
+            const { old_text, new_text, description } = args;
+            if (!old_text || !new_text) {
+              addLog('Invalid replace_text call: missing old_text or new_text', 'error');
+            } else if (currentContent.includes(old_text)) {
+              currentContent = currentContent.replace(old_text, new_text);
+              addLog(description || 'Text replaced', 'success');
+              changeCount++;
+            } else {
+              const preview = old_text.length > 50 ? old_text.substring(0, 50) + '...' : old_text;
+              addLog(`Could not find text to replace: "${preview}"`, 'error');
+            }
+            
+            conversationMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: currentContent.includes(new_text) ? "Success" : "Text not found"
+            });
+          } else if (functionName === "insert_text") {
+            const { after, text, description } = args;
+            if (!after || !text) {
+              addLog('Invalid insert_text call: missing after or text', 'error');
+            } else if (currentContent.includes(after)) {
+              currentContent = currentContent.replace(after, after + text);
+              addLog(description || 'Text inserted', 'success');
+              changeCount++;
+            } else {
+              const preview = after.length > 50 ? after.substring(0, 50) + '...' : after;
+              addLog(`Could not find anchor text: "${preview}"`, 'error');
+            }
+            
+            conversationMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: "Success"
+            });
+          }
+        }
+      } else {
+        // AI stopped calling tools - we're done
+        if (iterationCount === 1 && changeCount === 0) {
+          addLog('AI did not use tools. Prompting to use them...');
+          conversationMessages.push({
+            role: "user",
+            content: "You must use the provided tools (replace_text, insert_text) to edit the file. Make 3-5 changes."
+          });
+        } else {
+          // AI finished making changes
+          if (changeCount > 0) {
+            addLog(`Completed with ${changeCount} changes applied`, 'complete');
+          } else {
+            addLog('No changes were made to the file');
+          }
+          isFinished = true;
+        }
+      }
+
+      if (iterationCount >= maxIterations && !isFinished) {
+        if (changeCount > 0) {
+          addLog(`Completed with ${changeCount} changes applied`, 'complete');
+        } else {
+          addLog('Completed with no changes');
+        }
+        isFinished = true;
+      }
+    }
+
+    return currentContent;
+  };
+
   const processFile = async () => {
     if (!uploadedFile || !selectedModel || !url || !jwt) return;
 
@@ -206,6 +456,10 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     setProcessingProgress(0);
     setError(null);
     setLogs([]); // Clear previous logs
+
+    // Create abort controller for this processing session
+    const controller = new AbortController();
+    setAbortController(controller);
 
     let progressInterval: NodeJS.Timeout | null = null;
 
@@ -223,135 +477,261 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
       } catch (fileErr) {
         throw new Error('Failed to read file content. Please ensure the file is a valid text file.');
       }
+
+      let cleanContent = '';
+
+      // Detect file type info
+      const fileExt = uploadedFile.name.split('.').pop()?.toLowerCase() || '';
+      const isScriptingLanguage = ['js', 'jsx', 'ts', 'tsx', 'py', 'php', 'rb', 'pl'].includes(fileExt);
       
-      // Real progress simulation
-      progressInterval = setInterval(() => {
-        setProcessingProgress(prev => {
-          if (prev >= 80) {
-            if (progressInterval) {
-              clearInterval(progressInterval);
-            }
-            return prev;
+      if (useToolCalling) {
+        // Use tool-calling mode for more reliable editing
+        try {
+          cleanContent = await processFileWithTools(fileContent, controller, uploadedFile.name);
+          setProcessingProgress(90);
+        } catch (toolErr) {
+          // Check if model doesn't support tool calling
+          if (toolErr instanceof Error && toolErr.message === 'TOOL_CALLING_NOT_SUPPORTED') {
+            addLog('Falling back to legacy mode (full file rewrite)...');
+            // Fall through to legacy mode below
+          } else {
+            throw toolErr; // Re-throw other errors
           }
-          return prev + 5;
-        });
-      }, 500);
-
-      addLog('Preparing AI request...');
-      setProcessingProgress(30);
+        }
+      }
       
-      // Prepare the system prompt for file rewriting with output markers
-      const systemPrompt = `You are a file rewriting assistant. Your task is to rewrite the provided file content to change its hash while maintaining the same functionality and meaning. 
+      if (!cleanContent) {
+        // Legacy mode: full file rewrite
+        // Real progress simulation
+        progressInterval = setInterval(() => {
+          setProcessingProgress(prev => {
+            if (prev >= 80) {
+              if (progressInterval) {
+                clearInterval(progressInterval);
+              }
+              return prev;
+            }
+            return prev + 5;
+          });
+        }, 500);
 
-Rules:
-1. Keep the same file structure and format
-2. Maintain all functionality and behavior
-3. Change variable names, comments, and formatting where possible
-4. Preserve all logic and algorithms
-5. Make the changes subtle but effective for hash modification
-6. Do not change the file extension or core purpose
+        // Prepare file type context for AI
+        const languageContext = isScriptingLanguage 
+          ? `This is a .${fileExt} file (scripting language). Variable/function renaming is safe.`
+          : `This is a .${fileExt} file. Use conservative transforms only (reordering, formatting).`;
+        
+        addLog('Preparing AI request...');
+        addLog(languageContext);
+        setProcessingProgress(30);
+      
+        // Prepare the system prompt for file rewriting with output markers
+      const systemPrompt = `You are a code transformation engine for security tooling. Your ONLY job is to output rewritten code that changes the file hash while maintaining EXACT functionality.
 
-CRITICAL OUTPUT FORMAT:
-You MUST wrap your rewritten file content between these exact markers:
+CRITICAL - NEVER CHANGE:
+- API endpoints, URLs, network addresses
+- Serialization formats (JSON keys, protocol data, markers like "LOOT_ENTRIES")
+- Control flow, logic, or algorithms
+- Function signatures, interfaces, or exports
+- Import statements or dependencies
+- Cryptographic operations, keys, or HMAC values
+- Hardcoded values affecting runtime behavior (timeouts, buffer sizes, etc.)
+
+SAFE CHANGES ONLY (High Confidence):
+1. For scripting languages (JS, Python, PHP):
+   - Rename local variables to synonyms (userData → userInfo)
+   - Modify/add comments with different wording
+   - Change quote styles where safe (' vs ")
+   - Reorder independent function declarations
+
+2. For compiled languages (Go, Rust, C/C++):
+   - Reorder independent functions/structs
+   - Adjust whitespace and formatting
+   - Add blank lines between sections
+   - Rename unexported/private identifiers ONLY if certain
+
+3. Universal:
+   - Reorder independent code blocks
+   - Adjust indentation/formatting
+   - Add whitespace
+
+Make CONSERVATIVE changes. Quality over quantity. When uncertain, keep original.
+
+REQUIRED OUTPUT FORMAT:
 <<<START_FILE>>>
-[your rewritten file content here]
+[complete rewritten file - no explanations, just code]
 <<<END_FILE>>>
 
-Do NOT include any explanations, thoughts, or commentary outside these markers. Everything between the markers will be extracted as the final file.
-If you need to explain your changes, do so BEFORE the <<<START_FILE>>> marker.
+EXAMPLE (Python):
+Input:
+def fetch(url):
+    data = download(url)
+    return data
 
-The user may provide an optional message with specific instructions for the rewrite.`;
+Output:
+<<<START_FILE>>>
+def fetch(url):
+    # Retrieve data from URL
+    result = download(url)
+    return result
+<<<END_FILE>>>
 
-      // Prepare messages
-      const messages = [
-        { role: "system", content: systemPrompt },
-        { 
-          role: "user", 
-          content: `Please rewrite this file to change its hash while maintaining functionality.\n\n${message ? `Additional instructions: ${message}\n\n` : ''}Remember to wrap the rewritten file between <<<START_FILE>>> and <<<END_FILE>>> markers.\n\nFile content:\n\`\`\`\n${fileContent}\n\`\`\`` 
+Output ONLY the markers and complete rewritten code. No explanations before or after.`;
+
+        // Prepare initial messages with file type context
+        const conversationMessages = [
+          { role: "system", content: systemPrompt },
+          { 
+            role: "user", 
+            content: `${message ? `Additional requirements: ${message}\n\n` : ''}${languageContext}\n\nRewrite this file now making CONSERVATIVE changes only. Output ONLY the <<<START_FILE>>> marker, the complete rewritten code, and <<<END_FILE>>> marker. No explanations.\n\nFile to rewrite:\n\`\`\`\n${fileContent}\n\`\`\`` 
+          }
+        ];
+
+        let retryCount = 0;
+        const maxRetries = 5;
+
+        // Retry loop for getting proper formatted output
+        while (retryCount < maxRetries && !cleanContent) {
+          if (retryCount > 0) {
+            addLog(`Retry attempt ${retryCount}/${maxRetries} - asking AI to provide complete code...`);
+          } else {
+            addLog(`Sending request to AI model: ${selectedModel.name}`);
+            addLog(`Original file size: ${fileContent.length} characters`);
+          }
+          
+          setProcessingProgress(40 + (retryCount * 10));
+
+          // Send to AI (same API as AI component)
+          const response = await fetch(`${normalisedOpenWebUIUrl}api/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${jwt}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: selectedModel.id,
+              messages: conversationMessages,
+              stream: false,
+            }),
+            signal: controller.signal,
+          });
+
+          addLog('Waiting for AI response...');
+          setProcessingProgress(60 + (retryCount * 5));
+
+          if (!response.ok) {
+            throw new Error(`AI processing failed: ${response.status}`);
+          }
+
+          addLog('Processing AI response...');
+          setProcessingProgress(70);
+          
+          let data;
+          try {
+            data = await response.json();
+          } catch (parseErr) {
+            throw new Error('Failed to parse AI response. The model may have returned invalid data.');
+          }
+          
+          // Validate response structure
+          if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+            throw new Error('Invalid response format from AI service. The model may not be compatible.');
+          }
+          
+          const choice = data.choices[0];
+          if (!choice || !choice.message || !choice.message.content) {
+            throw new Error('No content received from AI service');
+          }
+          
+          const rewrittenContent = choice.message.content;
+          
+          // Add assistant's response to conversation history
+          conversationMessages.push({ role: "assistant", content: rewrittenContent });
+
+          // Try to extract content between markers
+          const startMarker = '<<<START_FILE>>>';
+          const endMarker = '<<<END_FILE>>>';
+          
+          const startIndex = rewrittenContent.indexOf(startMarker);
+          const endIndex = rewrittenContent.indexOf(endMarker);
+          
+          if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+            // Extract content between markers
+            cleanContent = rewrittenContent
+              .substring(startIndex + startMarker.length, endIndex)
+              .trim();
+            addLog(`Extracted content between markers (${cleanContent.length} characters)`);
+          } else {
+            // Try fallback extraction methods
+            addLog('Markers not found, attempting fallback extraction...');
+            const codeBlockMatch = rewrittenContent.match(/```[\s\S]*?\n([\s\S]*?)\n```/);
+            if (codeBlockMatch && codeBlockMatch[1]) {
+              cleanContent = codeBlockMatch[1].trim();
+              addLog(`Extracted content from markdown code block (${cleanContent.length} characters)`);
+            }
+          }
+
+          // Validate the extracted content is reasonable
+          const minExpectedSize = Math.min(fileContent.length * 0.5, 100); // At least 50% of original or 100 chars minimum
+          const isContentTooSmall = cleanContent.length < minExpectedSize;
+          const looksLikeExplanation = cleanContent.length < 500 && (
+            cleanContent.toLowerCase().includes('here is') ||
+            cleanContent.toLowerCase().includes('here\'s') ||
+            cleanContent.toLowerCase().includes('i have') ||
+            cleanContent.toLowerCase().includes('i\'ve') ||
+            cleanContent.toLowerCase().startsWith('and') ||
+            cleanContent.toLowerCase().startsWith('the ')
+          );
+
+          if (!cleanContent || cleanContent.length === 0 || isContentTooSmall || looksLikeExplanation) {
+            if (retryCount < maxRetries - 1) {
+              if (!cleanContent || cleanContent.length === 0) {
+                addLog('Empty response received, retrying...');
+              } else if (isContentTooSmall) {
+                addLog(`Content too small (${cleanContent.length} chars vs expected ~${fileContent.length}), retrying...`);
+              } else if (looksLikeExplanation) {
+                addLog(`Response appears to be text/explanation ("${cleanContent.substring(0, 50)}..."), not code. Retrying...`);
+              }
+              
+              // Add the AI's response to conversation and ask for correction
+              let retryMessage = "STOP. Your previous response was invalid. ";
+              if (!cleanContent || cleanContent.length === 0) {
+                retryMessage += "You provided no code. ";
+              } else if (isContentTooSmall) {
+                retryMessage += `You only provided ${cleanContent.length} characters but the file is ${fileContent.length} characters long. `;
+              } else if (looksLikeExplanation) {
+                retryMessage += "You provided an explanation, not code. ";
+              }
+              retryMessage += `\n\nYou MUST rewrite the ENTIRE file (${fileContent.length} characters) and output it between these markers:\n<<<START_FILE>>>\n[COMPLETE rewritten code here]\n<<<END_FILE>>>\n\nDo it now. No text before or after the markers.`;
+              
+              conversationMessages.push({
+                role: "user",
+                content: retryMessage
+              });
+              retryCount++;
+              cleanContent = ''; // Reset for next attempt
+              continue;
+            } else {
+              // Last retry failed
+              if (!cleanContent || cleanContent.length === 0) {
+                throw new Error('Failed to extract valid file content from AI response after multiple attempts');
+              } else {
+                addLog('Warning: Content may be incomplete or invalid, but using it as last resort');
+              }
+            }
+          }
+
+          // Successfully extracted valid content
+          addLog('Successfully validated extracted content');
+          break;
         }
-      ];
 
-      addLog(`Sending request to AI model: ${selectedModel.name}`);
-      setProcessingProgress(40);
-
-      // Send to AI (same API as AI component)
-      const response = await fetch(`${normalisedOpenWebUIUrl}api/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: selectedModel.id,
-          messages: messages,
-          stream: false,
-        }),
-      });
-
-      addLog('Waiting for AI response...');
-      setProcessingProgress(60);
-
-      if (!response.ok) {
-        throw new Error(`AI processing failed: ${response.status}`);
+        addLog('AI processing completed successfully');
+        addLog(`Extracted ${cleanContent.length} characters of file content`);
+        setProcessingProgress(90);
       }
 
-      addLog('Processing AI response...');
-      setProcessingProgress(70);
-      
-      const data = await response.json();
-      
-      // Validate response structure
-      if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-        throw new Error('Invalid response format from AI service');
-      }
-      
-      const choice = data.choices[0];
-      if (!choice.message || !choice.message.content) {
-        throw new Error('No content received from AI service');
-      }
-      
-      addLog('AI processing completed successfully');
-      setProcessingProgress(80);
-      
-      const rewrittenContent = choice.message.content;
-
-      // Extract content between markers
-      let cleanContent = '';
-      const startMarker = '<<<START_FILE>>>';
-      const endMarker = '<<<END_FILE>>>';
-      
-      const startIndex = rewrittenContent.indexOf(startMarker);
-      const endIndex = rewrittenContent.indexOf(endMarker);
-      
-      if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-        // Extract content between markers
-        cleanContent = rewrittenContent
-          .substring(startIndex + startMarker.length, endIndex)
-          .trim();
-        addLog('Successfully extracted file content from AI response');
-      } else {
-        // Fallback: try to extract from markdown code blocks
-        addLog('Warning: Markers not found, attempting fallback extraction...');
-        const codeBlockMatch = rewrittenContent.match(/```[\s\S]*?\n([\s\S]*?)\n```/);
-        if (codeBlockMatch && codeBlockMatch[1]) {
-          cleanContent = codeBlockMatch[1].trim();
-          addLog('Extracted content from markdown code block');
-        } else {
-          // Last resort: use the entire response
-          cleanContent = rewrittenContent.trim();
-          addLog('Warning: Using entire AI response as file content');
-        }
-      }
-
-      if (!cleanContent || cleanContent.length === 0) {
-        throw new Error('Failed to extract valid file content from AI response');
-      }
-
-      addLog(`Extracted ${cleanContent.length} characters of file content`);
+      // Common download logic for both modes
       addLog('Preparing file download...');
-      setProcessingProgress(90);
-
-      // Download the rewritten file
       const blob = new Blob([cleanContent], { type: 'text/plain' });
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -370,14 +750,28 @@ The user may provide an optional message with specific instructions for the rewr
       }
 
     } catch (err) {
-      addLog(`Error: ${err instanceof Error ? err.message : 'Processing failed'}`);
-      setError(err instanceof Error ? err.message : 'Processing failed');
+      // Check if it was aborted by user
+      if (err instanceof Error && err.name === 'AbortError') {
+        addLog('Processing stopped by user');
+        setError('Processing stopped by user');
+      } else {
+        addLog(`Error: ${err instanceof Error ? err.message : 'Processing failed'}`);
+        setError(err instanceof Error ? err.message : 'Processing failed');
+      }
     } finally {
       if (progressInterval) {
         clearInterval(progressInterval);
       }
       setIsProcessing(false);
       setProcessingProgress(0);
+      setAbortController(null);
+    }
+  };
+
+  const stopProcessing = () => {
+    if (abortController) {
+      addLog('Stopping processing...');
+      abortController.abort();
     }
   };
 
@@ -545,6 +939,22 @@ The user may provide an optional message with specific instructions for the rewr
               />
             </div>
 
+            <div className="mode-selection">
+              <label className="mode-toggle">
+                <input
+                  type="checkbox"
+                  checked={useToolCalling}
+                  onChange={(e) => setUseToolCalling(e.target.checked)}
+                />
+                <span>Use intelligent editing mode (recommended for large files)</span>
+              </label>
+              <p className="mode-description">
+                {useToolCalling 
+                  ? "AI will make targeted edits using tools for more reliable results."
+                  : "AI will rewrite the entire file in one go (may fail on large files)."}
+              </p>
+            </div>
+
             {isProcessing && (
               <div className="processing-section">
                 <div className="progress-bar">
@@ -582,6 +992,15 @@ The user may provide an optional message with specific instructions for the rewr
                   </>
                 )}
               </button>
+              {isProcessing && (
+                <button
+                  className="stop-btn"
+                  onClick={stopProcessing}
+                  title="Stop processing"
+                >
+                  Stop
+                </button>
+              )}
             </div>
           </div>
 
@@ -591,11 +1010,27 @@ The user may provide an optional message with specific instructions for the rewr
               {logs.length === 0 ? (
                 <p className="poly-engine-logs-empty">No logs yet. Start processing a file to see logs here.</p>
               ) : (
-                logs.map((log, index) => (
-                  <div key={index} className="poly-engine-log-entry">
-                    {log}
-                  </div>
-                ))
+                logs.map((log, index) => {
+                  const getIcon = () => {
+                    switch (log.type) {
+                      case 'success':
+                        return <FiCheck className="log-icon log-icon-success" />;
+                      case 'error':
+                        return <FiX className="log-icon log-icon-error" />;
+                      case 'complete':
+                        return <FiCheckCircle className="log-icon log-icon-complete" />;
+                      default:
+                        return null;
+                    }
+                  };
+
+                  return (
+                    <div key={index} className={`poly-engine-log-entry log-type-${log.type || 'info'}`}>
+                      {getIcon()}
+                      <span className="log-message">{log.message}</span>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
