@@ -54,16 +54,9 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 ![Filesystem Explorer](docs/src/LootCollection.png)
 
-![Listener Dashboard](docs/src/handlers.png)
-
 ### 5. Automation Playbooks
 - The **Automations** tab captures repeatable playbooks—quick triage, privilege escalation, lateral movement—so teams can trigger a curated workflow instead of rebuilding checklists every engagement.
 - Operators reclaim time by replaying vetted sequences with a click, while the AI assistant can adapt playbooks mid-run when intel changes.
-
-![Automation Library](docs/src/automation1.png)
-
-![Automation Runbook](docs/src/automation2.png)
-
 
 ## Agents at a glance
 
