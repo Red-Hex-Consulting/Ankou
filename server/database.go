@@ -36,7 +36,7 @@ func createLogsTable() error {
 }
 
 func getAllAgents() ([]Agent, error) {
-	rows, err := db.Query("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval FROM agents WHERE is_removed = 0 OR is_removed IS NULL")
+	rows, err := db.Query("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval, COALESCE(privileges, '') FROM agents WHERE is_removed = 0 OR is_removed IS NULL")
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func getAllAgents() ([]Agent, error) {
 		var agent Agent
 		var handlerID sql.NullString
 		var handlerName sql.NullString
-		err := rows.Scan(&agent.ID, &agent.Name, &agent.Status, &agent.IP, &agent.LastSeen, &agent.OS, &agent.CreatedAt, &handlerID, &handlerName, &agent.ReconnectInterval)
+		err := rows.Scan(&agent.ID, &agent.Name, &agent.Status, &agent.IP, &agent.LastSeen, &agent.OS, &agent.CreatedAt, &handlerID, &handlerName, &agent.ReconnectInterval, &agent.Privileges)
 		if err != nil {
 			return nil, err
 		}
@@ -68,12 +68,12 @@ func removeAgent(agentID string) error {
 }
 
 func getAgentByID(agentID string) (*Agent, error) {
-	row := db.QueryRow("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval FROM agents WHERE id = ?", agentID)
+	row := db.QueryRow("SELECT id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval, COALESCE(privileges, '') FROM agents WHERE id = ?", agentID)
 
 	var agent Agent
 	var handlerID sql.NullString
 	var handlerName sql.NullString
-	err := row.Scan(&agent.ID, &agent.Name, &agent.Status, &agent.IP, &agent.LastSeen, &agent.OS, &agent.CreatedAt, &handlerID, &handlerName, &agent.ReconnectInterval)
+	err := row.Scan(&agent.ID, &agent.Name, &agent.Status, &agent.IP, &agent.LastSeen, &agent.OS, &agent.CreatedAt, &handlerID, &handlerName, &agent.ReconnectInterval, &agent.Privileges)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

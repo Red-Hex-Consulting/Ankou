@@ -48,6 +48,7 @@ type Agent struct {
 	HandlerID         string    `json:"handlerId"`
 	HandlerName       string    `json:"handlerName"`
 	ReconnectInterval int       `json:"reconnectInterval"`
+	Privileges        string    `json:"privileges"`
 }
 
 type Listener struct {
@@ -73,6 +74,7 @@ type AgentRegistration struct {
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
 	ReconnectInterval int    `json:"reconnectInterval"` // Beacon interval in seconds (0 = unknown)
+	Privileges        string `json:"privileges"`        // JSON: {isRoot: bool, isAdmin: bool}
 }
 
 type Command struct {
@@ -740,6 +742,11 @@ func main() {
 			log.Printf("Warning: unable to add is_removed column: %v", err)
 		}
 	}
+	if _, err := db.Exec("ALTER TABLE agents ADD COLUMN privileges TEXT DEFAULT ''"); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			log.Printf("Warning: unable to add privileges column: %v", err)
+		}
+	}
 
 	// Add file_type column if it doesn't exist (migration for existing databases)
 	_, err = db.Exec("ALTER TABLE loot_files ADD COLUMN file_type TEXT")
@@ -1085,8 +1092,8 @@ func registerAgent(w http.ResponseWriter, r *http.Request) {
 
 	// Insert new agent
 	now := time.Now()
-	_, err = db.Exec("INSERT INTO agents (id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		reg.UUID, reg.Name, "online", reg.IP, now, reg.OS, now, handlerID, handlerName, reg.ReconnectInterval)
+	_, err = db.Exec("INSERT INTO agents (id, name, status, ip, last_seen, os, created_at, handler_id, handler_name, reconnect_interval, privileges) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		reg.UUID, reg.Name, "online", reg.IP, now, reg.OS, now, handlerID, handlerName, reg.ReconnectInterval, reg.Privileges)
 	if err != nil {
 		http.Error(w, "Failed to register agent", http.StatusInternalServerError)
 		return

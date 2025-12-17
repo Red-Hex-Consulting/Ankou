@@ -7,6 +7,8 @@
 
 Ankou is a modern, modular command-and-control (C2) platform designed to let operators move fast without sacrificing tradecraft. Every component—from the transport relay to the desktop client—ships with a quickstart script so you can clone the repository, set your implant keys, run the provided commands, and start experimenting immediately. The built-in AI companion lowers the learning curve for new operators while giving seasoned teams a force multiplier for deep target analysis. Ankou includes three default agents ready for your team to cutomize - you can also create entirely new handlers for a new, fresh, never before seen agent just for your team.
 
+![AI Operations Panel](docs/src/AnkouAgents.png)
+
 ---
 
 ## Core Architecture at a Glance
@@ -31,15 +33,13 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 - All these features provide an easy way to build a custom agent under it all; once your transport is set, take a look at the current agents and build one around your new handler with whatever TTPs you love to use.
 
 ### 2. Human-in-the-Loop AI Companion
-- The client's **AI Operations** panel communicates with your OpenWebUI instance so all target data stays on hosts you control.
+- The client's **AI Operations** panel talks to any OpenAI-compatible endpoint so all target data can stay on hosts you control (OpenAI, LM Studio, Ollama, OpenWebUI, etc.).
 - Plug in your favorite local or self-hosted LLM; the assistant ingests the full history of command output, builds a shared understanding of the target, and can summarize results, flag anomalies, draft follow-on commands, or watch for notable artifacts while you remain in full control.
 - Guided workflows help less experienced operators learn the rhythm of an engagement: the assistant explains context, proposes vetted commands, suggests decision trees, and highlights common next moves. Veteran operators can focus on higher-level strategy, using AI to sift noisy telemetry, compare hosts, or spot pivot points in seconds.
 - Click-to-run recommendations (using `<cmdankou>` tags) let you execute AI-suggested commands straight from the chat, keeping operations quick yet auditable.
-- Because everything is proxied through OpenWebUI, you can experiment with different models without touching Ankou's core code—great for testing new LLMs, keeping models aligned with mission policy, or swapping to air-gapped models mid-operation.
+- Because everything is proxied through an OpenAI-compatible layer, you can swap models without touching Ankou's code.
 
-![AI Operations Panel](docs/src/AiAgent1.png)
-
-![AI Decision Support](docs/src/AiAgent2.png)
+![AI Chat Panel](docs/src/AiChat.png)
 
 ### 3. AI-Assisted Binary Diversification
 - Ankou’s Poly Engine rewrites your implant’s source structure while preserving full functionality. Each build will compile into a meaningfully different binary to reduce signaturability across campaigns.
@@ -54,15 +54,34 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 ![Filesystem Explorer](docs/src/LootCollection.png)
 
-![Listener Dashboard](docs/src/handlers.png)
-
 ### 5. Automation Playbooks
 - The **Automations** tab captures repeatable playbooks—quick triage, privilege escalation, lateral movement—so teams can trigger a curated workflow instead of rebuilding checklists every engagement.
 - Operators reclaim time by replaying vetted sequences with a click, while the AI assistant can adapt playbooks mid-run when intel changes.
 
-![Automation Library](docs/src/automation1.png)
+## Agents at a glance
 
-![Automation Runbook](docs/src/automation2.png)
+| Agent      | Platform       | Language           | Protocol / Transport        |
+|------------|-------------------|--------------------|-----------------------------|
+| **geist**  | Windows    | Rust               | HTTP3/QUIC                  |
+| **phantasm** | Windows  | Go                 | HTTPS                       |
+| **anomaly**  | Windows           | Node.js (inject in C) | HTTPS   |
+| **shade**  | Linux           | Go | SSH   |
+| **(Planned) Wraith** | Linux | Rust         | HTTP3/QUIC             |
+
+> See [Agent Catalog](docs/agents.md) for details on each agent's design, protocol, and tasking model.
+
+---
+
+## AI Backend Configuration (OpenAI-Compatible)
+
+The AI assistant and Poly Engine both speak the OpenAI API. You can point Ankou at any OpenAI-compatible backend:
+
+- Local/self-hosted: LM Studio, Ollama, OpenWebUI (typically no API key by default)
+
+Defaults and usage:
+- **API Base URL**: Defaults to `http://localhost:11434/v1` (works out of the box for Ollama/LM Studio).
+- **API Key**: Optional; only needed for providers that require auth (e.g., OpenAI). Leave blank for local backends that don’t require keys.
+- Both the AI chat panel and Poly Engine share these settings, so you configure once and reuse.
 
 ---
 

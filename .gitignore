@@ -26,6 +26,8 @@ server/listeners/*.json
 # TLS certificates
 server/cert.pem
 server/key.pem
+server/server.crt
+server/server.key
 ghost-relay/cert.pem
 ghost-relay/key.pem
 

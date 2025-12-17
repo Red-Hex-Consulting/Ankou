@@ -86,6 +86,7 @@ type AgentRegistration struct {
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
 	ReconnectInterval int    `json:"reconnectInterval"`
+	Privileges        string `json:"privileges"`
 }
 
 type Command struct {
@@ -158,6 +159,7 @@ func connectAndServe(agentID, agentName, osInfo string) error {
 		IP:                getLocalIP(),
 		OS:                osInfo,
 		ReconnectInterval: reconnectInterval,
+		Privileges:        getPrivilegeInfo(),
 	}
 
 	// Marshal the core registration data
@@ -324,6 +326,16 @@ func getLocalIP() string {
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String()
+}
+
+func getPrivilegeInfo() string {
+	// Unix/Linux - check if running as root
+	isRoot := os.Geteuid() == 0
+	privJSON, _ := json.Marshal(map[string]bool{
+		"isRoot":  isRoot,
+		"isAdmin": false,
+	})
+	return string(privJSON)
 }
 
 func calculateIntervalWithJitter() int {
