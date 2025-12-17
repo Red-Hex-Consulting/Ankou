@@ -14,9 +14,13 @@ interface PolyEngineProps {
   isActive: boolean;
 }
 
+const API_BASE_URL_STORAGE_KEY = "ai_api_base_url";
+const API_KEY_STORAGE_KEY = "ai_api_key";
+const DEFAULT_API_BASE_URL = "http://localhost:11434/v1";
+
 export default function PolyEngine({ isActive }: PolyEngineProps) {
-  const [url, setUrl] = useState("");
-  const [jwt, setJwt] = useState("");
+  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Model[]>([]);
@@ -52,25 +56,33 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     };
   }, []);
 
-  const normalisedOpenWebUIUrl = useMemo(() => {
-    if (!url) return null;
-    return url.endsWith("/") ? url : `${url}/`;
-  }, [url]);
+  const normalizedApiBaseUrl = useMemo(() => {
+    if (!apiBaseUrl) return null;
+    return apiBaseUrl.replace(/\/+$/, "");
+  }, [apiBaseUrl]);
 
   const addLog = useCallback((message: string, type?: 'success' | 'error' | 'complete' | 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { message: `[${timestamp}] ${message}`, type: type || 'info' }]);
   }, []);
 
-  const loadModels = useCallback(async (engineUrl: string, token: string) => {
+  const loadModels = useCallback(async (engineUrl: string, token?: string) => {
     try {
-      const response = await fetch(`${engineUrl.endsWith('/') ? engineUrl : engineUrl + '/'}api/models`, {
+      const baseUrl = engineUrl.trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("API base URL is required.");
+      }
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      if (token?.trim()) {
+        headers.Authorization = `Bearer ${token.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/models`, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -104,31 +116,42 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
         modelsArray = [];
       }
       
-      setModels(modelsArray);
+      const normalizedModels: Model[] = modelsArray.map((model: any) => ({
+        id: model.id || model.name,
+        name: model.name || model.id,
+        provider: model.provider || model.source,
+      }));
+
+      setModels(normalizedModels);
       
       // Show appropriate message based on result
       if (modelsArray.length === 0) {
-        setError('No models available. Please ensure models are loaded in OpenWebUI.');
+        setError('No models available. Please ensure your OpenAI-compatible endpoint exposes a model list.');
       }
     } catch (err) {
       console.error('Error loading models:', err);
-      setError('Failed to load models - check URL and credentials');
+      setError('Failed to load models - check the API base URL and API key');
       setModels([]);
     }
   }, []);
 
   // Load cached credentials on mount (same as AI component)
   useEffect(() => {
-    const cachedUrl = localStorage.getItem('openwebui_url');
-    const cachedJwt = localStorage.getItem('openwebui_jwt');
-    if (cachedUrl && cachedJwt) {
-      setUrl(cachedUrl);
-      setJwt(cachedJwt);
+    const cachedUrl = localStorage.getItem(API_BASE_URL_STORAGE_KEY);
+    const cachedKey = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+    if (cachedUrl) {
+      setApiBaseUrl(cachedUrl);
+    } else {
+      setApiBaseUrl(DEFAULT_API_BASE_URL);
+    }
+    if (cachedKey) {
+      setApiKey(cachedKey);
+    }
+    if (cachedUrl) {
       setIsLoggedIn(true);
-      // Add error handling for loadModels
-      loadModels(cachedUrl, cachedJwt).catch((err) => {
+      loadModels(cachedUrl, cachedKey).catch((err) => {
         console.error('Failed to load models on mount:', err);
-        setError('Failed to load models - check URL and credentials');
+        setError('Failed to load models - check the API base URL and API key');
       });
     }
   }, [loadModels]);
@@ -139,11 +162,20 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     setError(null);
 
     try {
-      await loadModels(url, jwt);
+      const baseUrl = apiBaseUrl.trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("Please provide an API base URL.");
+      }
+
+      await loadModels(baseUrl, apiKey);
       
-      // Cache credentials (same as AI component)
-      localStorage.setItem('openwebui_url', url);
-      localStorage.setItem('openwebui_jwt', jwt);
+      // Cache credentials (shared with AI component)
+      localStorage.setItem(API_BASE_URL_STORAGE_KEY, baseUrl);
+      if (apiKey.trim()) {
+        localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+      } else {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+      }
       
       setIsLoggedIn(true);
     } catch (err) {
@@ -159,10 +191,10 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('openwebui_url');
-    localStorage.removeItem('openwebui_jwt');
-    setUrl("");
-    setJwt("");
+    localStorage.removeItem(API_BASE_URL_STORAGE_KEY);
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    setApiBaseUrl(DEFAULT_API_BASE_URL);
+    setApiKey("");
     setIsLoggedIn(false);
     setModels([]);
     setSelectedModel(null);
@@ -202,7 +234,13 @@ export default function PolyEngine({ isActive }: PolyEngineProps) {
     }
   };
 
-  const processFileWithTools = async (fileContent: string, controller: AbortController, fileName: string) => {
+  const processFileWithTools = async (
+    fileContent: string,
+    controller: AbortController,
+    fileName: string,
+    baseUrl: string,
+    authToken?: string
+  ) => {
     // Define tools for the AI to edit the file
     const tools = [
       {
@@ -330,12 +368,16 @@ Each tool call is applied sequentially. Be precise and conservative.`;
       iterationCount++;
       setProcessingProgress(30 + (iterationCount * 30));
 
-      const response = await fetch(`${normalisedOpenWebUIUrl}api/chat/completions`, {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (authToken?.trim()) {
+        headers.Authorization = `Bearer ${authToken.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           model: selectedModel.id,
           messages: conversationMessages,
@@ -464,7 +506,7 @@ Each tool call is applied sequentially. Be precise and conservative.`;
   };
 
   const processFile = async () => {
-    if (!uploadedFile || !selectedModel || !url || !jwt) return;
+    if (!uploadedFile || !selectedModel || !apiBaseUrl.trim()) return;
 
     setIsProcessing(true);
     setProcessingProgress(0);
@@ -498,10 +540,22 @@ Each tool call is applied sequentially. Be precise and conservative.`;
       const fileExt = uploadedFile.name.split('.').pop()?.toLowerCase() || '';
       const isScriptingLanguage = ['js', 'jsx', 'ts', 'tsx', 'py', 'php', 'rb', 'pl'].includes(fileExt);
       
+      const baseUrl = normalizedApiBaseUrl || apiBaseUrl.trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("API base URL is not configured.");
+      }
+      const authToken = apiKey.trim() || undefined;
+
       if (useToolCalling) {
         // Use tool-calling mode for more reliable editing
         try {
-          cleanContent = await processFileWithTools(fileContent, controller, uploadedFile.name);
+          cleanContent = await processFileWithTools(
+            fileContent,
+            controller,
+            uploadedFile.name,
+            baseUrl,
+            authToken
+          );
           setProcessingProgress(90);
         } catch (toolErr) {
           // Check if model doesn't support tool calling
@@ -615,12 +669,16 @@ Output ONLY the markers and complete rewritten code. No explanations before or a
           setProcessingProgress(40 + (retryCount * 10));
 
           // Send to AI (same API as AI component)
-          const response = await fetch(`${normalisedOpenWebUIUrl}api/chat/completions`, {
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          if (authToken?.trim()) {
+            headers.Authorization = `Bearer ${authToken.trim()}`;
+          }
+
+          const response = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${jwt}`,
-              'Content-Type': 'application/json',
-            },
+            headers,
             body: JSON.stringify({
               model: selectedModel.id,
               messages: conversationMessages,
@@ -830,32 +888,31 @@ Output ONLY the markers and complete rewritten code. No explanations before or a
           <div className="poly-engine-login-card">
             <div className="poly-engine-login-card-header">
               <SiOllama className="poly-engine-login-icon" />
-              <h2>Connect to Open WebUI</h2>
-              <p>Enter your Open WebUI endpoint and token to start processing files.</p>
+              <h2>Connect to OpenAI-Compatible API</h2>
+              <p>Use an OpenAI-compatible endpoint (Ollama, LM Studio, OpenAI) to rewrite files.</p>
             </div>
 
             <form className="poly-engine-login-form" onSubmit={handleLogin}>
               <div className="form-group">
-                <label htmlFor="poly-url">Open WebUI URL</label>
+                <label htmlFor="poly-url">API Base URL</label>
                 <input
                   id="poly-url"
                   type="url"
-                  placeholder="https://your-openwebui-instance.com/"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="http://localhost:11434/v1"
+                  value={apiBaseUrl}
+                  onChange={(e) => setApiBaseUrl(e.target.value)}
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="poly-jwt">JWT Token</label>
+                <label htmlFor="poly-key">API Key (optional)</label>
                 <input
-                  id="poly-jwt"
+                  id="poly-key"
                   type="password"
-                  placeholder="Your JWT token"
-                  value={jwt}
-                  onChange={(e) => setJwt(e.target.value)}
-                  required
+                  placeholder="Only required for hosted APIs"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
                 />
               </div>
 

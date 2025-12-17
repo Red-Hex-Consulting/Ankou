@@ -347,10 +347,10 @@
 .model-dropdown select {
   width: 100%;
   padding: 8px 12px;
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary, #1f2937);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  color: var(--text-primary);
+  color: var(--text-primary, #e5e7eb);
   font-size: 14px;
   appearance: none;
   background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
@@ -367,8 +367,8 @@
 }
 
 .model-dropdown select option {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  background: var(--bg-secondary, #1f2937);
+  color: var(--text-primary, #e5e7eb);
   padding: 8px;
 }
 

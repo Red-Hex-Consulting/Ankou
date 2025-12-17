@@ -73,7 +73,6 @@ interface AgentChatTab {
   agentLastSeen: string;
   agentCreatedAt: string;
   reconnectInterval?: number;
-  conversationId: string | null;
   contextPrompt: string;
   commandHistory: Command[];
   messages: ChatMessage[];
@@ -83,9 +82,14 @@ interface AgentChatTab {
   error: string | null;
 }
 
-const CONVERSATION_STORAGE_KEY = "openwebui_agent_conversations";
-const CHAT_TABS_STORAGE_KEY = "openwebui_agent_chat_tabs";
-const ACTIVE_TAB_STORAGE_KEY = "openwebui_agent_active_tab";
+const CHAT_TABS_STORAGE_KEY = "ai_agent_chat_tabs";
+const ACTIVE_TAB_STORAGE_KEY = "ai_agent_active_tab";
+const API_BASE_URL_STORAGE_KEY = "ai_api_base_url";
+const API_KEY_STORAGE_KEY = "ai_api_key";
+const MODELS_STORAGE_KEY = "ai_api_models";
+const LOGGED_IN_STORAGE_KEY = "ai_api_logged_in";
+const SELECTED_MODEL_STORAGE_KEY = "ai_selected_model";
+const DEFAULT_API_BASE_URL = "http://localhost:11434/v1";
 const MAX_COMMAND_HISTORY = 50;
 const COMMAND_TAG_REGEX = /<\s*(?:cmdankou|ankoucmd)\s*>([\s\S]*?)<\/\s*(?:cmdankou|ankoucmd)\s*>/gi;
 const THINK_TAG_REGEX = /<think>([\s\S]*?)<\/think>/gi;
@@ -460,43 +464,6 @@ function ClickableCommand({ command, chatTabs, activeChatTabId, modelName, isExe
   );
 }
 
-const extractConversationId = (data: any): string | null => {
-  if (!data) return null;
-  if (typeof data === "string") {
-    return data.trim() || null;
-  }
-
-  const candidates = [
-    data.id,
-    data.ID,
-    data.conversationId,
-    data.conversation_id,
-    data?.conversation?.id,
-    data?.conversation?.conversation_id,
-    data?.conversation?.uuid,
-    data?.data?.id,
-    data?.conversationID,
-    data?.metadata?.conversation_id,
-    data?.uuid,
-    data?.conversation_uuid,
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === "string" && candidate.trim().length) {
-      return candidate.trim();
-    }
-  }
-
-  if (Array.isArray(data)) {
-    for (const item of data) {
-      const nested = extractConversationId(item);
-      if (nested) return nested;
-    }
-  }
-
-  return null;
-};
-
 const formatTimestamp = (value?: string) => {
   if (!value) return "Unknown";
   const date = new Date(value);
@@ -504,68 +471,6 @@ const formatTimestamp = (value?: string) => {
     return value;
   }
   return date.toLocaleString();
-};
-
-const normaliseMessageContent = (message: any): string => {
-  if (!message) return "";
-
-  if (typeof message === "string") {
-    return message;
-  }
-
-  if (typeof message.content === "string") {
-    return message.content;
-  }
-
-  if (Array.isArray(message.content)) {
-    return message.content
-      .map((part: any) => {
-        if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
-        if (typeof part?.content === "string") return part.content;
-        return "";
-      })
-      .join("");
-  }
-
-  if (typeof message.message === "string") {
-    return message.message;
-  }
-
-  if (Array.isArray(message.parts)) {
-    return message.parts
-      .map((part: any) => {
-        if (typeof part === "string") return part;
-        if (typeof part?.text === "string") return part.text;
-        return "";
-      })
-      .join("");
-  }
-
-  if (typeof message.text === "string") {
-    return message.text;
-  }
-
-  return "";
-};
-
-const mapConversationMessages = (rawMessages: any[]): ChatMessage[] => {
-  if (!Array.isArray(rawMessages)) return [];
-
-  return rawMessages
-    .filter(
-      (msg) => msg && (msg.role === "user" || msg.role === "assistant")
-    )
-    .map((msg) => ({
-      id: msg.id ?? msg.message_id ?? undefined,
-      role: msg.role,
-      content: normaliseMessageContent(msg),
-      createdAt: msg.created_at ?? msg.timestamp ?? undefined,
-      metadata:
-        typeof msg.metadata === "object" && msg.metadata !== null
-          ? msg.metadata
-          : undefined,
-    }));
 };
 
 const buildAgentContextPrompt = (
@@ -740,18 +645,6 @@ const isCommandOutputMessage = (
   };
 } => message.metadata?.type === "command_output";
 
-const loadStoredConversations = () => {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(CONVERSATION_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
 const loadStoredChatTabs = (): AgentChatTab[] => {
   if (typeof window === "undefined") return [];
   try {
@@ -798,8 +691,8 @@ const saveActiveTab = (tabId: string | null) => {
 export default function AI({ isActive }: AIProps) {
   const { user } = useAuth();
   const { serverUrl } = useServerUrl();
-  const [url, setUrl] = useState("");
-  const [jwt, setJwt] = useState("");
+  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [apiKey, setApiKey] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<Model[]>([]);
@@ -816,9 +709,6 @@ export default function AI({ isActive }: AIProps) {
   const [activeChatTabId, setActiveChatTabId] = useState<string | null>(() => loadStoredActiveTab());
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [tabInputs, setTabInputs] = useState<Record<string, string>>({});
-  const [conversationMap, setConversationMap] = useState<
-    Record<string, string>
-  >(() => loadStoredConversations());
   const { commands: commandState, handlers } = useWebSocket(true);
 
   // Calculate agent status based on last_seen and reconnect_interval
@@ -903,25 +793,23 @@ export default function AI({ isActive }: AIProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamingMessageRef = useRef<Record<string, string>>({});
 
-  const normalisedOpenWebUIUrl = useMemo(() => {
-    if (!url) return null;
-    return url.endsWith("/") ? url : `${url}/`;
-  }, [url]);
+  const normalizedApiBaseUrl = useMemo(() => {
+    if (!apiBaseUrl) return null;
+    return apiBaseUrl.replace(/\/+$/, "");
+  }, [apiBaseUrl]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const cachedUrl = localStorage.getItem("openwebui_url");
-    const cachedJwt = localStorage.getItem("openwebui_jwt");
-    const cachedModels = localStorage.getItem("openwebui_models");
-    const cachedLogin = localStorage.getItem("openwebui_logged_in");
-    const cachedModel = localStorage.getItem("openwebui_selected_model");
+    const cachedBaseUrl = localStorage.getItem(API_BASE_URL_STORAGE_KEY);
+    const cachedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    const cachedModels = localStorage.getItem(MODELS_STORAGE_KEY);
+    const cachedLogin = localStorage.getItem(LOGGED_IN_STORAGE_KEY);
+    const cachedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
 
-    if (cachedUrl) {
-      setUrl(cachedUrl);
-    }
-    if (cachedJwt) {
-      setJwt(cachedJwt);
+    setApiBaseUrl(cachedBaseUrl || DEFAULT_API_BASE_URL);
+    if (cachedApiKey) {
+      setApiKey(cachedApiKey);
     }
     if (cachedModels) {
       try {
@@ -942,18 +830,10 @@ export default function AI({ isActive }: AIProps) {
         // ignore
       }
     }
-    if (cachedLogin === "true" && cachedUrl && cachedJwt) {
+    if (cachedLogin === "true" && (cachedBaseUrl || DEFAULT_API_BASE_URL)) {
       setIsLoggedIn(true);
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(
-      CONVERSATION_STORAGE_KEY,
-      JSON.stringify(conversationMap)
-    );
-  }, [conversationMap]);
 
   useEffect(() => {
     if (!activeChatTabId) return;
@@ -1183,174 +1063,6 @@ export default function AI({ isActive }: AIProps) {
     [fetchGraphQL]
   );
 
-  const handleOpenWebUIAuthFailure = useCallback(
-    (message?: string) => {
-      setIsLoggedIn(false);
-      setSelectedModel(null);
-      setChatTabs([]);
-      setActiveChatTabId(null);
-      setTabInputs({});
-      setConversationMap({});
-      streamingMessageRef.current = {};
-      setError(
-        message ||
-        "Open WebUI authentication failed. Please re-enter your URL and JWT token."
-      );
-
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("openwebui_logged_in");
-        localStorage.removeItem("openwebui_jwt");
-        localStorage.removeItem("openwebui_selected_model");
-        localStorage.removeItem(CONVERSATION_STORAGE_KEY);
-      }
-    },
-    []
-  );
-
-  const openWebUIRequest = useCallback(
-    async (path: string, init: RequestInit = {}) => {
-      if (!normalisedOpenWebUIUrl || !jwt) {
-        handleOpenWebUIAuthFailure(
-          "Open WebUI connection is not configured. Please enter your URL and JWT token."
-        );
-        throw new Error("Open WebUI connection is not configured.");
-      }
-
-      const method = (init.method || "GET").toUpperCase();
-      const headers = new Headers(init.headers || {});
-      headers.set("Authorization", `Bearer ${jwt}`);
-      if (!headers.has("Accept")) {
-        headers.set("Accept", "application/json");
-      }
-
-      const isBodyFormData =
-        typeof FormData !== "undefined" && init.body instanceof FormData;
-      if (method !== "GET" && method !== "HEAD") {
-        if (!isBodyFormData && !headers.has("Content-Type")) {
-          headers.set("Content-Type", "application/json");
-        }
-      } else if (headers.has("Content-Type") && !isBodyFormData) {
-        headers.delete("Content-Type");
-      }
-
-      const response = await fetch(`${normalisedOpenWebUIUrl}${path}`, {
-        ...init,
-        method,
-        headers,
-      });
-
-      const raw = await response.text();
-      if (!response.ok) {
-        if (response.status === 401 || response.status === 403) {
-          handleOpenWebUIAuthFailure(
-            "Open WebUI rejected the JWT. Please re-authenticate."
-          );
-        }
-
-        const summary = raw ? `: ${raw.slice(0, 200)}` : "";
-        const error = new Error(
-          `Open WebUI request failed (${method} ${path} -> ${response.status})${summary}`
-        );
-        (error as any).status = response.status;
-        (error as any).body = raw;
-        (error as any).method = method;
-        (error as any).path = path;
-        throw error;
-      }
-
-      if (!raw) {
-        return null;
-      }
-
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return raw;
-      }
-    },
-    [handleOpenWebUIAuthFailure, jwt, normalisedOpenWebUIUrl]
-  );
-
-  const fetchConversationById = useCallback(
-    async (conversationId: string) => {
-      let lastError: unknown = null;
-
-      const attempts: Array<() => Promise<any[]>> = [
-        async () => {
-          const data = await openWebUIRequest(
-            `api/conversations/${conversationId}`,
-            { method: "GET" }
-          );
-
-          if (data?.conversation?.messages) {
-            return data.conversation.messages;
-          }
-          if (Array.isArray(data?.messages)) {
-            return data.messages;
-          }
-          return Array.isArray(data) ? data : [];
-        },
-        async () => {
-          const data = await openWebUIRequest(
-            `api/conversations/${conversationId}/messages`,
-            { method: "GET" }
-          );
-          if (Array.isArray(data?.messages)) {
-            return data.messages;
-          }
-          return Array.isArray(data) ? data : [];
-        },
-        async () => {
-          const data = await openWebUIRequest(
-            `api/chat/conversations/${conversationId}`,
-            { method: "GET" }
-          );
-          if (Array.isArray(data?.messages)) {
-            return data.messages;
-          }
-          if (data?.conversation?.messages) {
-            return data.conversation.messages;
-          }
-          return Array.isArray(data) ? data : [];
-        },
-        async () => {
-          const data = await openWebUIRequest(
-            `api/chat/conversations/${conversationId}/messages`,
-            { method: "GET" }
-          );
-          if (Array.isArray(data?.messages)) {
-            return data.messages;
-          }
-          return Array.isArray(data) ? data : [];
-        },
-      ];
-
-      for (const attempt of attempts) {
-        try {
-          const result = await attempt();
-          return result;
-        } catch (err) {
-          lastError = err;
-          const status = (err as any)?.status;
-          if (status && ![404, 405, 501].includes(status)) {
-            throw err;
-          }
-        }
-      }
-
-      if (lastError) {
-        const status = (lastError as any)?.status;
-        if (status && [404, 405, 501].includes(status)) {
-          return [];
-        }
-        throw lastError;
-      }
-
-      return [];
-    },
-    [openWebUIRequest]
-  );
-
   const initializeAgentTab = useCallback(
     async (tabId: string, agent: Agent) => {
       setChatTabs((prev) =>
@@ -1368,35 +1080,13 @@ export default function AI({ isActive }: AIProps) {
           isExecMode
         );
 
-        let conversationId = conversationMap[agent.id] || null;
-        let existingMessages: ChatMessage[] = [];
-
-        if (conversationId) {
-          try {
-            const rawMessages = await fetchConversationById(conversationId);
-            existingMessages = mapConversationMessages(rawMessages).filter(
-              (message) => message.role !== "system"
-            );
-          } catch (err) {
-            if ((err as any).status === 404) {
-              setConversationMap((prev) => {
-                const updated = { ...prev };
-                delete updated[agent.id];
-                return updated;
-              });
-              conversationId = null;
-            } else {
-              throw err;
-            }
-          }
-        }
+        const existingMessages: ChatMessage[] = [];
 
         setChatTabs((prev) =>
           prev.map((tab) =>
             tab.tabId === tabId
               ? {
                 ...tab,
-                conversationId,
                 contextPrompt,
                 commandHistory: (context.commands ?? []).map((command) => ({
                   ...command,
@@ -1427,13 +1117,13 @@ export default function AI({ isActive }: AIProps) {
         );
       }
     },
-    [conversationMap, fetchAgentContext, fetchConversationById, handlers, isExecMode]
+    [fetchAgentContext, handlers, isExecMode]
   );
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url || !jwt) {
-      setError("Please fill in both URL and JWT");
+    if (!apiBaseUrl.trim()) {
+      setError("Please provide an API base URL.");
       return;
     }
 
@@ -1441,13 +1131,18 @@ export default function AI({ isActive }: AIProps) {
     setError(null);
 
     try {
-      const response = await fetch(`${url.endsWith('/') ? url : url + '/'}api/models`, {
+      const baseUrl = apiBaseUrl.trim().replace(/\/+$/, "");
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      if (apiKey.trim()) {
+        headers.Authorization = `Bearer ${apiKey.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/models`, {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -1493,12 +1188,16 @@ export default function AI({ isActive }: AIProps) {
       setModels(modelsList);
       setIsLoggedIn(true);
 
-      localStorage.setItem("openwebui_url", url);
-      localStorage.setItem("openwebui_jwt", jwt);
-      localStorage.setItem("openwebui_models", JSON.stringify(modelsList));
-      localStorage.setItem("openwebui_logged_in", "true");
+      localStorage.setItem(API_BASE_URL_STORAGE_KEY, baseUrl);
+      if (apiKey.trim()) {
+        localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+      } else {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+      }
+      localStorage.setItem(MODELS_STORAGE_KEY, JSON.stringify(modelsList));
+      localStorage.setItem(LOGGED_IN_STORAGE_KEY, "true");
 
-      const cachedModel = localStorage.getItem("openwebui_selected_model");
+      const cachedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
       if (cachedModel) {
         try {
           const parsedModel: Model = JSON.parse(cachedModel);
@@ -1516,7 +1215,7 @@ export default function AI({ isActive }: AIProps) {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to connect. Please check your URL and JWT."
+          : "Failed to connect. Please check your API base URL and key."
       );
     } finally {
       setIsLoading(false);
@@ -1527,9 +1226,9 @@ export default function AI({ isActive }: AIProps) {
     const model = models.find((m) => m.id === modelId) || null;
     setSelectedModel(model);
     if (model) {
-      localStorage.setItem("openwebui_selected_model", JSON.stringify(model));
+      localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, JSON.stringify(model));
     } else {
-      localStorage.removeItem("openwebui_selected_model");
+      localStorage.removeItem(SELECTED_MODEL_STORAGE_KEY);
     }
   };
 
@@ -1675,7 +1374,6 @@ export default function AI({ isActive }: AIProps) {
       agentLastSeen: agent.lastSeen,
       reconnectInterval: agent.reconnectInterval,
       agentCreatedAt: agent.createdAt,
-      conversationId: conversationMap[agent.id] || null,
       contextPrompt: "",
       commandHistory: [],
       messages: [],
@@ -1746,7 +1444,6 @@ export default function AI({ isActive }: AIProps) {
       agentLastSeen: agentToUse.lastSeen,
       agentCreatedAt: agentToUse.createdAt,
       reconnectInterval: agentToUse.reconnectInterval,
-      conversationId: null, // New conversation
       contextPrompt: "",
       commandHistory: [],
       messages: [],
@@ -1810,9 +1507,6 @@ export default function AI({ isActive }: AIProps) {
     }, 100);
 
     try {
-      let conversationId =
-        tab.conversationId ?? conversationMap[tab.agentId] ?? null;
-
       // Build message history for the AI
       // Limit to last 20 messages to prevent context window overflow and keep system prompt relevant
       const MAX_HISTORY_MESSAGES = 20;
@@ -1827,31 +1521,29 @@ export default function AI({ isActive }: AIProps) {
           ? [{ role: "system", content: tab.contextPrompt }, ...recentMessages]
           : recentMessages;
 
-      const requestBody: Record<string, unknown> = {
+      const requestBody = {
         model: selectedModel.id,
         messages: payloadMessages,
         stream: true,
-        metadata: {
-          agentId: tab.agentId,
-          agentName: tab.agentName,
-        },
       };
 
-      if (conversationId) {
-        requestBody.conversation_id = conversationId;
+      const baseUrl = normalizedApiBaseUrl || apiBaseUrl.trim().replace(/\/+$/, "");
+      if (!baseUrl) {
+        throw new Error("API base URL is not configured.");
       }
 
-      const response = await fetch(
-        `${normalisedOpenWebUIUrl}api/chat/completions`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (apiKey.trim()) {
+        headers.Authorization = `Bearer ${apiKey.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
+      });
 
       if (!response.ok || !response.body) {
         throw new Error(`Failed to send message: ${response.status}`);
@@ -1948,23 +1640,6 @@ export default function AI({ isActive }: AIProps) {
 
           try {
             const parsed = JSON.parse(data);
-
-            const maybeConversationId = extractConversationId(parsed);
-            if (maybeConversationId && maybeConversationId !== conversationId) {
-              conversationId = maybeConversationId;
-              setConversationMap((prev) => ({
-                ...prev,
-                [tab.agentId]: maybeConversationId,
-              }));
-              setChatTabs((prev) =>
-                prev.map((item) =>
-                  item.tabId === tab.tabId
-                    ? { ...item, conversationId: maybeConversationId }
-                    : item
-                )
-              );
-            }
-
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               streamingMessageRef.current[tab.tabId] += content;
@@ -1981,20 +1656,6 @@ export default function AI({ isActive }: AIProps) {
             // ignore parsing errors for partial chunks
           }
         }
-      }
-
-      if (conversationId && conversationId !== tab.conversationId) {
-        setConversationMap((prev) => ({
-          ...prev,
-          [tab.agentId]: conversationId as string,
-        }));
-        setChatTabs((prev) =>
-          prev.map((item) =>
-            item.tabId === tab.tabId
-              ? { ...item, conversationId: conversationId as string }
-              : item
-          )
-        );
       }
     } catch (err) {
       console.error("Streaming error:", err);
@@ -2027,24 +1688,22 @@ export default function AI({ isActive }: AIProps) {
   };
 
   const handleLogout = () => {
-    setUrl("");
-    setJwt("");
+    setApiBaseUrl(DEFAULT_API_BASE_URL);
+    setApiKey("");
     setModels([]);
     setIsLoggedIn(false);
     setSelectedModel(null);
     setChatTabs([]);
     setActiveChatTabId(null);
     setTabInputs({});
-    setConversationMap({});
     streamingMessageRef.current = {};
     setError(null);
 
-    localStorage.removeItem("openwebui_url");
-    localStorage.removeItem("openwebui_jwt");
-    localStorage.removeItem("openwebui_models");
-    localStorage.removeItem("openwebui_logged_in");
-    localStorage.removeItem("openwebui_selected_model");
-    localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+    localStorage.removeItem(API_BASE_URL_STORAGE_KEY);
+    localStorage.removeItem(API_KEY_STORAGE_KEY);
+    localStorage.removeItem(MODELS_STORAGE_KEY);
+    localStorage.removeItem(LOGGED_IN_STORAGE_KEY);
+    localStorage.removeItem(SELECTED_MODEL_STORAGE_KEY);
   };
 
   if (!isActive) {
@@ -2065,32 +1724,31 @@ export default function AI({ isActive }: AIProps) {
           <div className="ai-login-card">
             <div className="ai-login-card-header">
               <SiOllama className="ai-login-icon" />
-              <h2>Connect to Open WebUI</h2>
-              <p>Enter your Open WebUI endpoint and token to start chatting with agents.</p>
+              <h2>Connect to OpenAI-Compatible API</h2>
+              <p>Use an OpenAI-compatible endpoint (Ollama, LM Studio, or OpenAI) to chat with agents.</p>
             </div>
 
             <form className="ai-login-form" onSubmit={handleLogin}>
               <div className="form-group">
-                <label htmlFor="ai-url">Open WebUI URL</label>
+                <label htmlFor="ai-url">API Base URL</label>
                 <input
                   id="ai-url"
                   type="url"
-                  placeholder="https://your-openwebui-instance.com/"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="http://localhost:11434/v1"
+                  value={apiBaseUrl}
+                  onChange={(e) => setApiBaseUrl(e.target.value)}
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="ai-jwt">JWT Token</label>
+                <label htmlFor="ai-key">API Key (optional)</label>
                 <input
-                  id="ai-jwt"
+                  id="ai-key"
                   type="password"
-                  placeholder="Your JWT token"
-                  value={jwt}
-                  onChange={(e) => setJwt(e.target.value)}
-                  required
+                  placeholder="Only needed for hosted providers"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
                 />
               </div>
 
@@ -2120,7 +1778,7 @@ export default function AI({ isActive }: AIProps) {
       <div className="ai-header">
         <div className="ai-stats">
           <SiOllama className="stats-icon" />
-          <span className="stats-text">AI Assistant • Connected to Open WebUI</span>
+          <span className="stats-text">AI Assistant • Connected to OpenAI-Compatible API</span>
         </div>
         <button className="logout-btn" onClick={handleLogout}>
           Logout
