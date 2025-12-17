@@ -56,6 +56,7 @@ struct AgentRegistration {
     os: String,
     #[serde(rename = "reconnectInterval")]
     reconnect_interval: u64,
+    privileges: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +180,7 @@ async fn register_agent(
         ip: get_local_ip(),
         os: get_os_info(),
         reconnect_interval: state.reconnect_interval,
+        privileges: get_privilege_info(),
     };
 
     let data = wrap_with_hmac(&serde_json::to_value(&reg)?, &state.hmac_key)?;
@@ -714,6 +716,112 @@ fn get_local_ip() -> String {
 
 fn get_os_info() -> String {
     format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+fn get_privilege_info() -> String {
+    #[cfg(unix)]
+    {
+        let is_root = unsafe { libc::getuid() } == 0;
+        serde_json::json!({
+            "isRoot": is_root,
+            "isAdmin": false
+        }).to_string()
+    }
+    
+    #[cfg(windows)]
+    {
+        let is_elevated = check_elevated();
+        let is_admin = check_admin_group();
+        
+        serde_json::json!({
+            "isRoot": is_elevated,
+            "isAdmin": is_admin
+        }).to_string()
+    }
+    
+    #[cfg(not(any(unix, windows)))]
+    {
+        serde_json::json!({
+            "isRoot": false,
+            "isAdmin": false
+        }).to_string()
+    }
+}
+
+#[cfg(windows)]
+fn check_elevated() -> bool {
+    use windows::Win32::Security::*;
+    use windows::Win32::System::Threading::*;
+    use windows::Win32::Foundation::*;
+    
+    unsafe {
+        let mut token: HANDLE = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_ok() {
+            let mut elevation: TOKEN_ELEVATION = std::mem::zeroed();
+            let mut size = 0u32;
+            
+            if GetTokenInformation(
+                token,
+                TokenElevation,
+                Some(&mut elevation as *mut _ as *mut std::ffi::c_void),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut size,
+            ).is_ok() {
+                let _ = CloseHandle(token);
+                return elevation.TokenIsElevated != 0;
+            }
+            let _ = CloseHandle(token);
+        }
+    }
+    false
+}
+
+#[cfg(windows)]
+fn check_admin_group() -> bool {
+    use windows::Win32::Security::*;
+    use windows::Win32::Foundation::*;
+    use windows::Win32::System::Threading::*;
+    
+    unsafe {
+        // Create the Administrators group SID
+        let mut sid_auth = SID_IDENTIFIER_AUTHORITY {
+            Value: [0, 0, 0, 0, 0, 5], // SECURITY_NT_AUTHORITY
+        };
+        
+        let mut admin_group = PSID::default();
+        
+        if AllocateAndInitializeSid(
+            &sid_auth,
+            2,
+            0x00000020, // SECURITY_BUILTIN_DOMAIN_RID
+            0x00000220, // DOMAIN_ALIAS_RID_ADMINS
+            0, 0, 0, 0, 0, 0,
+            &mut admin_group,
+        ).is_err() {
+            return false;
+        }
+        
+        // Get current process token
+        let mut token: HANDLE = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            FreeSid(admin_group);
+            return false;
+        }
+        
+        // Check if the user token contains the admin group SID
+        let mut is_member = BOOL::default();
+        let result = CheckTokenMembership(token, admin_group, &mut is_member);
+        
+        // Clean up
+        let _ = CloseHandle(token);
+        FreeSid(admin_group);
+        
+        if result.is_ok() {
+            return is_member.as_bool();
+        }
+        
+        false
+    }
 }
 
 fn format_file_size(size: u64) -> String {

