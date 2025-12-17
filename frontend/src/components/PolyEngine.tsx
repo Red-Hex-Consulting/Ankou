@@ -389,7 +389,34 @@ Each tool call is applied sequentially. Be precise and conservative.`;
       });
 
       if (!response.ok) {
-        throw new Error(`AI processing failed: ${response.status}`);
+        // Try to get error details from response body
+        let errorBody = '';
+        try {
+          const errorData = await response.json();
+          errorBody = errorData.error?.message || errorData.message || errorData.error || JSON.stringify(errorData);
+        } catch {
+          try {
+            errorBody = await response.text();
+          } catch {
+            errorBody = '';
+          }
+        }
+        
+        // Check if 400 error is specifically about tool calling
+        if (response.status === 400) {
+          const lowerError = errorBody.toLowerCase();
+          // Check if error mentions tools, tool_choice, or function calling
+          if (lowerError.includes('tool') || lowerError.includes('function') || 
+              lowerError.includes('unsupported') || lowerError.includes('not supported') ||
+              lowerError.includes('unknown parameter') || lowerError.includes('invalid parameter')) {
+            addLog(`API doesn't support tool calling: ${errorBody}`, 'error');
+            addLog('Switching to legacy mode...', 'error');
+            throw new Error('TOOL_CALLING_NOT_SUPPORTED');
+          }
+        }
+        
+        // For other errors, throw with details
+        throw new Error(`AI processing failed (${response.status}): ${errorBody || 'Unknown error'}`);
       }
 
       let data;
