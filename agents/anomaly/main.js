@@ -169,7 +169,32 @@ function formatFileSize(size) {
 }
 
 async function handleLs(args) {
-    const targetPath = args[0] || '.';
+    // Parse flags and path (supports -l, -a and -- to end flags)
+    let targetPath = '.';
+    let showAll = false;
+    let longFormat = false;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--') {
+            if (i + 1 < args.length) {
+                targetPath = args[i + 1];
+            }
+            break;
+        }
+        if (typeof arg === 'string' && arg.startsWith('-') && arg.length > 1) {
+            for (const ch of arg.slice(1)) {
+                if (ch === 'a') showAll = true;
+                if (ch === 'l') longFormat = true;
+            }
+            continue;
+        }
+        if (typeof arg === 'string' && arg.length > 0) {
+            targetPath = arg;
+            break;
+        }
+    }
+
     const absPath = path.resolve(targetPath);
 
     const stats = await fs.promises.stat(absPath);
@@ -185,9 +210,23 @@ async function handleLs(args) {
     const dirs = entries.filter(e => e.isDirectory());
     const files = entries.filter(e => !e.isDirectory());
 
+    const formatLine = (entry, stats) => {
+        const icon = entry.isDirectory() ? '📁' : '📄';
+        if (!longFormat) {
+            const sizeStr = entry.isDirectory() ? '' : ` (${formatFileSize(stats.size)})`;
+            return `├── ${icon} ${entry.name}${entry.isDirectory() ? '/' : ''}${sizeStr}`;
+        }
+        const sizeStr = entry.isDirectory() ? '-' : formatFileSize(stats.size);
+        const mode = (stats.mode & 0o777).toString(8).padStart(4, '0');
+        const mtime = new Date(stats.mtime).toISOString().replace('T', ' ').split('.')[0];
+        return `${icon} ${mode} ${sizeStr.padStart(8, ' ')} ${mtime} ${entry.name}${entry.isDirectory() ? '/' : ''}`;
+    };
+
     for (const entry of dirs) {
+        if (!showAll && entry.name.startsWith('.')) continue;
         const fullPath = path.join(absPath, entry.name);
-        result += `├── 📁 ${entry.name}/\n`;
+        const entryStats = await fs.promises.stat(fullPath);
+        result += `${formatLine(entry, entryStats)}\n`;
         lootEntries.push({
             type: 'directory',
             path: fullPath,
@@ -197,14 +236,15 @@ async function handleLs(args) {
     }
 
     for (const entry of files) {
+        if (!showAll && entry.name.startsWith('.')) continue;
         const fullPath = path.join(absPath, entry.name);
-        const stats = await fs.promises.stat(fullPath);
-        result += `├── 📄 ${entry.name} (${formatFileSize(stats.size)})\n`;
+        const entryStats = await fs.promises.stat(fullPath);
+        result += `${formatLine(entry, entryStats)}\n`;
         lootEntries.push({
             type: 'file',
             path: fullPath,
             name: entry.name,
-            size: stats.size
+            size: entryStats.size
         });
     }
 

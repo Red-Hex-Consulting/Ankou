@@ -1,4 +1,4 @@
-import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram } from "react-icons/fa";
+import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram, FaRobot } from "react-icons/fa";
 import { GiScythe, GiOctopus, GiMagicGate } from "react-icons/gi";
 import { RiSkull2Fill } from "react-icons/ri";
 import { SiOllama } from "react-icons/si";
@@ -20,6 +20,7 @@ const sidebarItems = [
   { id: "terminal", label: "Global Commands", icon: GiOctopus },
   { id: "loot", label: "Loot", icon: FaDatabase },
   { id: "ai", label: "AI Chat", icon: SiOllama },
+  { id: "autonomy", label: "Autonomous Agent", icon: FaRobot },
   { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
   { id: "listeners", label: "Listeners", icon: LuRadioTower },
   { id: "handlers", label: "Handlers", icon: FaProjectDiagram },
@@ -60,7 +61,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(3, 5).map((item) => {
+        {sidebarItems.slice(3, 6).map((item) => {
           const IconComponent = item.icon;
           return (
             <button
@@ -77,7 +78,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(5, 8).map((item) => {
+        {sidebarItems.slice(6, 9).map((item) => {
           const IconComponent = item.icon;
           return (
             <button
@@ -94,7 +95,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(8).map((item) => {
+        {sidebarItems.slice(9).map((item) => {
           const IconComponent = item.icon;
           return (
             <button

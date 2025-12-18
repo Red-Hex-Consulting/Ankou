@@ -1,0 +1,395 @@
+import { useEffect, useMemo, useState } from "react";
+import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaLightbulb } from "react-icons/fa";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { useAutonomyRunner } from "../hooks/useAutonomyRunner";
+import {
+  API_BASE_URL_STORAGE_KEY,
+  API_KEY_STORAGE_KEY,
+  DEFAULT_API_BASE_URL,
+  MODELS_STORAGE_KEY,
+  SELECTED_MODEL_STORAGE_KEY,
+} from "../utils/aiSettings";
+import "./AutonomousAgent.css";
+
+interface Model {
+  id: string;
+  name: string;
+  provider?: string;
+}
+
+interface AutonomousAgentProps {
+  isActive: boolean;
+}
+
+const RED_TEAM_TRIAGE_PROMPT = `You are an advanced red team triage agent tasked with conducting initial reconnaissance and system assessment on a target computer. Your objective is to gather critical information that would be valuable for simulating adversarial penetration testing while maintaining operational security.
+
+Primary Tasks:
+1. SYSTEM ENUMERATION
+- Enumerate running processes, note suspicious/known malicious processes and unusual services
+- Identify process ownership, parent-child relationships, and potential privilege escalation vectors
+- Extract system architecture, OS version/build/patch level
+- Gather hardware specs (CPU, RAM, disks) and network interfaces
+
+2. FILE SYSTEM ANALYSIS
+- Extract /etc/passwd and /etc/shadow (or platform equivalent)
+- Collect config files: /etc/hosts, /etc/network/interfaces, /etc/fstab
+- Extract network config and firewall rules (netstat -an, iptables -L)
+- Gather system/app logs (/var/log/*) and identify sensitive user files (SSH keys, creds, configs)
+
+3. NETWORK AND SERVICE INVENTORY
+- List open ports and running services with versions
+- Enumerate connections, listeners, and sessions
+- Highlight exposed services with known vulnerabilities; map potential lateral paths
+
+4. PRIVILEGE AND ACCESS ASSESSMENT
+- List users and privilege levels
+- Enumerate network shares, mounts, accessible resources
+- Check SUID/SGID binaries (or platform equivalent) and installed packages/versions
+
+5. INITIAL THREAT INTELLIGENCE
+- Identify malicious indicators or prior compromise
+- Note security tools/monitoring present
+
+6. SUMMARY AND RISK ASSESSMENT
+- Summarize findings with risk categories, critical vulns, attack surface, privilege summary
+- Recommend next steps and mitigation priorities (High/Medium/Low)
+
+Constraints: stay on target host, avoid destabilizing actions, prioritize collection over exploitation, remain stealthy, and document clearly. Output sections: System Overview, Process Listing, User and Access Data, File System Findings, Network Assessment, Threat Intelligence, Summary and Risk Assessment.`;
+
+export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
+  const { agents } = useWebSocket(true);
+  const { status, steps, error, startRun, stopRun, isRunning } = useAutonomyRunner();
+
+  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [apiKey, setApiKey] = useState("");
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [goal, setGoal] = useState("");
+  const [maxSteps, setMaxSteps] = useState(8);
+  const [useAllowlist, setUseAllowlist] = useState(true);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(120);
+
+  // Load cached settings on mount
+  useEffect(() => {
+    const cachedBase = localStorage.getItem(API_BASE_URL_STORAGE_KEY);
+    const cachedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+    const cachedModels = localStorage.getItem(MODELS_STORAGE_KEY);
+    const cachedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+
+    if (cachedBase) setApiBaseUrl(cachedBase);
+    if (cachedKey) setApiKey(cachedKey);
+      if (cachedModels) {
+        try {
+          const parsed = JSON.parse(cachedModels);
+          const parsedModels: Model[] = Array.isArray(parsed) ? parsed : [];
+          setModels(parsedModels);
+          if (cachedModel) {
+            const parsedSelected: Model | null = JSON.parse(cachedModel);
+            const match = parsedSelected
+              ? parsedModels.find((m) => m.id === parsedSelected.id)
+              : null;
+            if (match) setSelectedModel(match);
+          }
+        } catch {
+          setModels([]);
+        }
+      }
+  }, []);
+
+  const handleLoadModels = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsConnecting(true);
+    setConnectError(null);
+
+    try {
+      const baseUrl = apiBaseUrl.trim().replace(/\/+$/, "");
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      };
+      if (apiKey.trim()) {
+        headers.Authorization = `Bearer ${apiKey.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/models`, { headers });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models (${response.status})`);
+      }
+
+      const text = await response.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error(`Invalid response from models endpoint: ${text.slice(0, 120)}`);
+      }
+
+      let modelList: Model[] = [];
+      if (Array.isArray(parsed)) {
+        modelList = parsed.map((m: any) => ({ id: m.id || m.name, name: m.name || m.id, provider: m.provider || m.source }));
+      } else if (Array.isArray(parsed?.data)) {
+        modelList = parsed.data.map((m: any) => ({ id: m.id || m.name, name: m.name || m.id, provider: m.provider || m.source }));
+      } else if (Array.isArray(parsed?.models)) {
+        modelList = parsed.models.map((m: any) => ({ id: m.id || m.name, name: m.name || m.id, provider: m.provider || m.source }));
+      }
+
+      if (modelList.length === 0) {
+        throw new Error("No models returned from API");
+      }
+
+      setModels(modelList);
+      setSelectedModel(modelList[0]);
+      localStorage.setItem(API_BASE_URL_STORAGE_KEY, baseUrl);
+      if (apiKey.trim()) {
+        localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+      } else {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+      }
+      localStorage.setItem(MODELS_STORAGE_KEY, JSON.stringify(modelList));
+      localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, JSON.stringify(modelList[0]));
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Failed to load models.");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const agentList = Array.isArray(agents) ? agents : [];
+
+  const selectedAgent = useMemo(() => {
+    const pool = Array.isArray(agentList) ? agentList : [];
+    return pool.find((a) => a.id === selectedAgentId) || null;
+  }, [agentList, selectedAgentId]);
+
+  const canStart = Boolean(
+    selectedAgent && selectedModel && goal.trim().length > 0 && !isRunning
+  );
+
+  const handleStart = () => {
+    if (!selectedAgent || !selectedModel) return;
+    startRun({
+      agent: selectedAgent,
+      goal: goal.trim(),
+      model: selectedModel,
+      apiBaseUrl,
+      apiKey,
+      maxSteps,
+      useAllowlist,
+      timeoutMs: Math.max(timeoutSeconds * 1000, 5000),
+    });
+  };
+
+  if (!isActive) {
+    return null;
+  }
+
+  return (
+    <div className="autonomy-container">
+      <div className="autonomy-header glassy">
+        <div className="autonomy-title">
+          <FaRobot /> <span>Autonomous Agent</span>
+        </div>
+        <div className={`status-chip ${status}`}>
+          {status.charAt(0).toUpperCase() + status.slice(1)}
+        </div>
+      </div>
+
+      <div className="autonomy-grid">
+        <div className="autonomy-panel glassy">
+          <form className="autonomy-form" onSubmit={handleLoadModels}>
+            <div className="form-group">
+              <label>API Base URL</label>
+              <input
+                type="url"
+                value={apiBaseUrl}
+                onChange={(e) => setApiBaseUrl(e.target.value)}
+                placeholder="http://localhost:11434/v1"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>API Key (optional)</label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Only needed for hosted providers"
+              />
+            </div>
+            <div className="form-group">
+              <label>Model</label>
+              <div className="model-row">
+                <select
+                  value={selectedModel?.id || ""}
+                  onChange={(e) => {
+                    const model = (models || []).find((m) => m.id === e.target.value) || null;
+                    setSelectedModel(model);
+                    if (model) {
+                      localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, JSON.stringify(model));
+                    }
+                  }}
+                >
+                  <option value="">Choose a model...</option>
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name} {model.provider ? `(${model.provider})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="secondary-btn" disabled={isConnecting}>
+                  {isConnecting ? "Loading..." : "Load Models"}
+                </button>
+              </div>
+              {connectError && <div className="inline-error">{connectError}</div>}
+            </div>
+          </form>
+
+          <div className="form-group">
+            <label>Target Agent</label>
+            <select
+              value={selectedAgentId}
+              onChange={(e) => setSelectedAgentId(e.target.value)}
+            >
+              <option value="">Select an agent...</option>
+              {agentList.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name} ({agent.ip}) • {agent.os}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Goal</label>
+            <textarea
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="Describe what the agent should accomplish..."
+              rows={4}
+            />
+          </div>
+
+          <div className="template-card">
+            <div className="template-info">
+              <FaLightbulb className="template-icon" />
+              <div>
+                <div className="template-title">Red Team Triage Playbook</div>
+                <div className="template-subtitle">Load a pre-built reconnaissance and system assessment prompt.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setGoal(RED_TEAM_TRIAGE_PROMPT)}
+            >
+              Use This Prompt
+            </button>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-group">
+              <label>Max Steps</label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={maxSteps}
+                onChange={(e) => setMaxSteps(Number(e.target.value))}
+              />
+            </div>
+            <div className="settings-group">
+              <label>Timeout (seconds)</label>
+              <input
+                type="number"
+                min={5}
+                max={600}
+                value={timeoutSeconds}
+                onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+              />
+            </div>
+            <div className="settings-group checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={useAllowlist}
+                  onChange={(e) => setUseAllowlist(e.target.checked)}
+                />
+                Enforce handler allowlist
+              </label>
+            </div>
+          </div>
+
+          <div className="action-row">
+            <button
+              className="primary-btn"
+              onClick={handleStart}
+              disabled={!canStart}
+            >
+              <FaPlay /> Start
+            </button>
+            <button
+              className="stop-btn"
+              onClick={stopRun}
+              disabled={!isRunning}
+              type="button"
+            >
+              <FaStop /> Stop
+            </button>
+          </div>
+
+          {error && (
+            <div className="inline-error">
+              <FaExclamationTriangle /> {error}
+            </div>
+          )}
+        </div>
+
+        <div className="autonomy-log">
+          <div className="log-header">Command Timeline</div>
+          {steps.length === 0 ? (
+            <div className="log-empty">No steps yet. Start a run to see activity.</div>
+          ) : (
+            <div className="log-entries">
+              {steps.map((step) => (
+                <div key={step.id} className={`log-entry ${step.status}`}>
+                  <div className="log-entry-header">
+                    <span className="log-title">{step.title}</span>
+                    <span className={`badge ${step.status}`}>{step.status}</span>
+                  </div>
+
+                  {step.commandText && (
+                    <div className="log-command">
+                      <span className="log-label">Command</span>
+                      <div className="log-command-line">
+                        <span className="prompt">$</span>
+                        <code>{step.commandText}</code>
+                      </div>
+                    </div>
+                  )}
+
+                  {step.detail && (
+                    <div className="log-output-box subtle">
+                      <span className="log-label">{step.kind === "thought" ? "Model Thoughts" : "Info"}</span>
+                      <pre className="log-output">{step.detail}</pre>
+                    </div>
+                  )}
+
+                  {step.output && (
+                    <div className="log-output-box">
+                      <span className="log-label">Output</span>
+                      <pre className="log-output scrollable">{step.output}</pre>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
