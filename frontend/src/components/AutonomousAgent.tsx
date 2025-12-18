@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaLightbulb } from "react-icons/fa";
+import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaLightbulb, FaCog } from "react-icons/fa";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAutonomyRunner } from "../hooks/useAutonomyRunner";
 import {
@@ -66,6 +66,8 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [goal, setGoal] = useState("");
@@ -93,6 +95,10 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
               ? parsedModels.find((m) => m.id === parsedSelected.id)
               : null;
             if (match) setSelectedModel(match);
+          }
+          // Auto-connect if we have cached models
+          if (parsedModels.length > 0) {
+            setIsConnected(true);
           }
         } catch {
           setModels([]);
@@ -143,6 +149,8 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
 
       setModels(modelList);
       setSelectedModel(modelList[0]);
+      setIsConnected(true);
+      setShowConfig(false);
       localStorage.setItem(API_BASE_URL_STORAGE_KEY, baseUrl);
       if (apiKey.trim()) {
         localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
@@ -193,36 +201,94 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
         <div className="autonomy-title">
           <FaRobot /> <span>Autonomous Agent</span>
         </div>
-        <div className={`status-chip ${status}`}>
-          {status.charAt(0).toUpperCase() + status.slice(1)}
+        <div className="autonomy-header-right">
+          <div className={`status-chip ${status}`}>
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+          </div>
+          {isConnected && (
+            <button 
+              className="config-toggle-btn" 
+              onClick={() => setShowConfig(!showConfig)}
+              title="Configure AI Settings"
+            >
+              <FaCog />
+            </button>
+          )}
         </div>
       </div>
 
       <div className="autonomy-grid">
         <div className="autonomy-panel glassy">
-          <form className="autonomy-form" onSubmit={handleLoadModels}>
-            <div className="form-group">
-              <label>API Base URL</label>
-              <input
-                type="url"
-                value={apiBaseUrl}
-                onChange={(e) => setApiBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434/v1"
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label>API Key (optional)</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Only needed for hosted providers"
-              />
-            </div>
-            <div className="form-group">
-              <label>Model</label>
-              <div className="model-row">
+          {!isConnected || showConfig ? (
+            <form className="autonomy-form" onSubmit={handleLoadModels}>
+              <div className="form-group">
+                <label>API Base URL</label>
+                <input
+                  type="url"
+                  value={apiBaseUrl}
+                  onChange={(e) => setApiBaseUrl(e.target.value)}
+                  placeholder="http://localhost:11434/v1"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>API Key (optional)</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Only needed for hosted providers"
+                />
+              </div>
+              <div className="form-group">
+                <label>Model</label>
+                <div className="model-row">
+                  <select
+                    value={selectedModel?.id || ""}
+                    onChange={(e) => {
+                      const model = (models || []).find((m) => m.id === e.target.value) || null;
+                      setSelectedModel(model);
+                      if (model) {
+                        localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, JSON.stringify(model));
+                      }
+                    }}
+                  >
+                    <option value="">Choose a model...</option>
+                    {models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} {model.provider ? `(${model.provider})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="submit" className="secondary-btn" disabled={isConnecting}>
+                    {isConnecting ? "Loading..." : "Load Models"}
+                  </button>
+                </div>
+                {connectError && <div className="inline-error">{connectError}</div>}
+              </div>
+              {showConfig && (
+                <button 
+                  type="button" 
+                  className="secondary-btn" 
+                  onClick={() => setShowConfig(false)}
+                >
+                  Close Config
+                </button>
+              )}
+            </form>
+          ) : (
+            <div className="connected-info">
+              <div className="connection-status">
+                <div className="status-indicator connected"></div>
+                <div>
+                  <div className="connection-title">AI Connected</div>
+                  <div className="connection-subtitle">
+                    {apiBaseUrl} • {selectedModel?.name || "No model selected"}
+                  </div>
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Model</label>
                 <select
                   value={selectedModel?.id || ""}
                   onChange={(e) => {
@@ -240,13 +306,9 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
                     </option>
                   ))}
                 </select>
-                <button type="submit" className="secondary-btn" disabled={isConnecting}>
-                  {isConnecting ? "Loading..." : "Load Models"}
-                </button>
               </div>
-              {connectError && <div className="inline-error">{connectError}</div>}
             </div>
-          </form>
+          )}
 
           <div className="form-group">
             <label>Target Agent</label>

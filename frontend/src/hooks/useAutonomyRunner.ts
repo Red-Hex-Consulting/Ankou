@@ -222,7 +222,8 @@ export function useAutonomyRunner() {
       agent: Agent,
       allowed: string[] | null,
       runId: string,
-      timeoutMs: number
+      timeoutMs: number,
+      modelName?: string
     ): Promise<ToolResult> => {
       const commandText = (args.command || "").trim();
       if (!commandText) {
@@ -238,7 +239,7 @@ export function useAutonomyRunner() {
         };
       }
 
-      const username = `${user?.username || "operator"} via autonomy`;
+      const username = `${user?.username || "operator"} via ${modelName || "autonomy"}`;
       const anchorId = (commandsRef.current[agent.id] || []).reduce(
         (max, cmd) => (cmd.id > max ? cmd.id : max),
         0
@@ -345,14 +346,15 @@ export function useAutonomyRunner() {
       agent: Agent,
       allowed: string[] | null,
       runId: string,
-      timeoutMs: number
+      timeoutMs: number,
+      modelName?: string
     ): Promise<ToolResult> => {
       if (stopRequestedRef.current) {
         return { status: "error", message: "Run stopped by operator." };
       }
 
       if (toolName === "run_command") {
-        return executeRunCommand(args, agent, allowed, runId, timeoutMs);
+        return executeRunCommand(args, agent, allowed, runId, timeoutMs, modelName);
       }
 
       if (toolName === "get_file") {
@@ -361,7 +363,7 @@ export function useAutonomyRunner() {
           return { status: "error", message: "Path is required for get_file." };
         }
         const command = path.startsWith("get ") ? path : `get ${path}`;
-        return executeRunCommand({ command }, agent, allowed, runId, timeoutMs);
+        return executeRunCommand({ command }, agent, allowed, runId, timeoutMs, modelName);
       }
 
       if (toolName === "get_recent_commands") {
@@ -545,7 +547,8 @@ export function useAutonomyRunner() {
               agent,
               allowedCommands,
               runId,
-              timeoutMs
+              timeoutMs,
+              model.name || model.id
             );
 
             messages.push({
