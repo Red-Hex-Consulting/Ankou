@@ -62,8 +62,8 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 | Agent      | Platform       | Language           | Protocol / Transport        |
 |------------|-------------------|--------------------|-----------------------------|
-| **geist**  | Windows    | Rust               | HTTP3/QUIC                  |
-| **phantasm** | Windows  | Go                 | HTTPS                       |
+| **geist**  | Windows    | Rust and Go               | HTTP3/QUIC                  |
+| **phantasm** | Windows  | Rust and Go                 | HTTPS                       |
 | **anomaly**  | Windows           | Node.js (inject in C) | HTTPS   |
 | **shade**  | Linux           | Go | SSH   |
 | **(Planned) Wraith** | Linux | Rust         | HTTP3/QUIC             |
