@@ -500,3 +500,8 @@
   max-height: 300px;
   overflow-y: auto;
 }
+
+.log-scroll-anchor {
+  height: 1px;
+  width: 100%;
+}

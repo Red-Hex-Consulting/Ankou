@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaLightbulb, FaCog } from "react-icons/fa";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAutonomyRunner } from "../hooks/useAutonomyRunner";
@@ -9,6 +9,7 @@ import {
   MODELS_STORAGE_KEY,
   SELECTED_MODEL_STORAGE_KEY,
 } from "../utils/aiSettings";
+import { RED_TEAM_TRIAGE_PROMPT } from "../utils/prompts";
 import "./AutonomousAgent.css";
 
 interface Model {
@@ -20,41 +21,6 @@ interface Model {
 interface AutonomousAgentProps {
   isActive: boolean;
 }
-
-const RED_TEAM_TRIAGE_PROMPT = `You are an advanced red team triage agent tasked with conducting initial reconnaissance and system assessment on a target computer. Your objective is to gather critical information that would be valuable for simulating adversarial penetration testing while maintaining operational security.
-
-Primary Tasks:
-1. SYSTEM ENUMERATION
-- Enumerate running processes, note suspicious/known malicious processes and unusual services
-- Identify process ownership, parent-child relationships, and potential privilege escalation vectors
-- Extract system architecture, OS version/build/patch level
-- Gather hardware specs (CPU, RAM, disks) and network interfaces
-
-2. FILE SYSTEM ANALYSIS
-- Extract /etc/passwd and /etc/shadow (or platform equivalent)
-- Collect config files: /etc/hosts, /etc/network/interfaces, /etc/fstab
-- Extract network config and firewall rules (netstat -an, iptables -L)
-- Gather system/app logs (/var/log/*) and identify sensitive user files (SSH keys, creds, configs)
-
-3. NETWORK AND SERVICE INVENTORY
-- List open ports and running services with versions
-- Enumerate connections, listeners, and sessions
-- Highlight exposed services with known vulnerabilities; map potential lateral paths
-
-4. PRIVILEGE AND ACCESS ASSESSMENT
-- List users and privilege levels
-- Enumerate network shares, mounts, accessible resources
-- Check SUID/SGID binaries (or platform equivalent) and installed packages/versions
-
-5. INITIAL THREAT INTELLIGENCE
-- Identify malicious indicators or prior compromise
-- Note security tools/monitoring present
-
-6. SUMMARY AND RISK ASSESSMENT
-- Summarize findings with risk categories, critical vulns, attack surface, privilege summary
-- Recommend next steps and mitigation priorities (High/Medium/Low)
-
-Constraints: stay on target host, avoid destabilizing actions, prioritize collection over exploitation, remain stealthy, and document clearly. Output sections: System Overview, Process Listing, User and Access Data, File System Findings, Network Assessment, Threat Intelligence, Summary and Risk Assessment.`;
 
 export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
   const { agents } = useWebSocket(true);
@@ -74,6 +40,7 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
   const [maxSteps, setMaxSteps] = useState(8);
   const [useAllowlist, setUseAllowlist] = useState(true);
   const [timeoutSeconds, setTimeoutSeconds] = useState(120);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
 
   // Load cached settings on mount
   useEffect(() => {
@@ -176,6 +143,12 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
   const canStart = Boolean(
     selectedAgent && selectedModel && goal.trim().length > 0 && !isRunning
   );
+
+  useEffect(() => {
+    if (logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [steps]);
 
   const handleStart = () => {
     if (!selectedAgent || !selectedModel) return;
@@ -416,7 +389,7 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
             <div className="log-empty">No steps yet. Start a run to see activity.</div>
           ) : (
             <div className="log-entries">
-              {steps.map((step) => (
+              {steps.map((step, idx) => (
                 <div key={step.id} className={`log-entry ${step.status}`}>
                   <div className="log-entry-header">
                     <span className="log-title">{step.title}</span>
@@ -446,6 +419,7 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
                       <pre className="log-output scrollable">{step.output}</pre>
                     </div>
                   )}
+                  {idx === steps.length - 1 && <div ref={logEndRef} className="log-scroll-anchor" />}
                 </div>
               ))}
             </div>
