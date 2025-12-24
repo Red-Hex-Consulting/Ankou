@@ -57,6 +57,7 @@ function wrapWithHMAC(data) {
     const jsonData = JSON.stringify(data);
     const { timestamp, signature } = signRequest('POST', LISTENER_ENDPOINT, jsonData);
     return JSON.stringify({
+        agent_type: 'anomaly',
         data: JSON.parse(jsonData),
         timestamp,
         signature
@@ -132,6 +133,7 @@ async function registerAgent() {
         name: state.agentId,
         ip: getLocalIP(),
         os: `${os.platform()} ${os.arch()}`,
+        agent_type: 'anomaly',
         reconnectInterval: state.reconnectInterval
     };
 

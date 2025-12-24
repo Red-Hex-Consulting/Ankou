@@ -129,6 +129,7 @@ type AgentRegistration struct {
 	Name              string `json:"name"`
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
+	AgentType         string `json:"agent_type,omitempty"`
 	ReconnectInterval int    `json:"reconnectInterval"`
 	Privileges        string `json:"privileges"`
 }
@@ -183,9 +184,10 @@ func wrapWithHMAC(data interface{}) ([]byte, error) {
 	timestamp, signature := signRequest("POST", listenerEndpoint, body)
 
 	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "geist",
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	return json.Marshal(wrapper)
@@ -285,6 +287,7 @@ func main() {
 			Name:              agentID,
 			IP:                getLocalIP(),
 			OS:                osInfo,
+			AgentType:         "geist",
 			ReconnectInterval: reconnectInterval,
 			Privileges:        getPrivilegeInfo(),
 		}

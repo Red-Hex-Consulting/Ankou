@@ -199,9 +199,8 @@ func (h *SSHHandler) handleExecRequest(ctx context.Context, channel ssh.Channel,
 		endpoint = ep
 	}
 
-	// Create minimal headers - agent type for routing only
+	// Create minimal headers - Content-Type only (agent type now in body)
 	headers := make(map[string]string)
-	headers["X-Agent-Type"] = h.agentType
 	headers["Content-Type"] = "application/json"
 
 	// Forward to C2

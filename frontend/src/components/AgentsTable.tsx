@@ -451,8 +451,8 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
                           />
                         )}
                         {!hasAnyPrivilege && (
-                          <FaUser 
-                            style={{ color: '#888888' }} 
+                          <FaUser
+                            style={{ color: 'var(--success-green)' }}
                             title='Standard User'
                           />
                         )}
