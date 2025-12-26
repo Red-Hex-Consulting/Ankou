@@ -1,6 +1,6 @@
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
-import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion, FaBolt, FaUser } from "react-icons/fa";
+import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion, FaBolt, FaUser, FaWindows, FaLinux, FaApple, FaClock, FaHistory } from "react-icons/fa";
 import { useState, useMemo, useRef } from "react";
 import ContextMenu from "./ContextMenu";
 import FileUploadModal from "./FileUploadModal";
@@ -34,6 +34,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
   const { agents, handlers, sendCommand, sendMessage } = useWebSocket(isActive);
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const [timeFormat, setTimeFormat] = useState<'relative' | 'timestamp'>('timestamp');
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; agent: Agent | null }>({
     visible: false,
     x: 0,
@@ -67,18 +68,67 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     return diffSeconds > expectedCheckIn ? "late" : "online";
   };
 
-  const formatLastSeen = (lastSeen: string) => {
+  const formatLastSeenRelative = (lastSeen: string) => {
     const date = new Date(lastSeen);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
 
     if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins} minutes ago`;
+    if (diffMins < 60) return `${diffMins} min ago`;
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays} days ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const formatLastSeenTimestamp = (lastSeen: string) => {
+    const date = new Date(lastSeen);
+    
+    // Format: "Dec 26, 3:45 PM"
+    const month = date.toLocaleString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const time = date.toLocaleString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    
+    return `${month} ${day}, ${time}`;
+  };
+
+  const formatLastSeenTooltip = (lastSeen: string) => {
+    const date = new Date(lastSeen);
+    // Full format for tooltip: "December 26, 2025, 3:45:30 PM"
+    return date.toLocaleString('en-US', { 
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    });
+  };
+
+  const formatLastSeen = (lastSeen: string) => {
+    return timeFormat === 'relative' 
+      ? formatLastSeenRelative(lastSeen) 
+      : formatLastSeenTimestamp(lastSeen);
+  };
+
+  const getOSIcon = (os: string) => {
+    const osLower = os.toLowerCase();
+
+    if (osLower.includes('windows')) {
+      return <FaWindows style={{ color: '#ffffff' }} title={os} />;
+    } else if (osLower.includes('linux')) {
+      return <FaLinux style={{ color: '#ffffff' }} title={os} />;
+    } else if (osLower.includes('darwin') || osLower.includes('mac')) {
+      return <FaApple style={{ color: '#ffffff' }} title={os} />;
+    } else {
+      return <FaQuestion style={{ color: 'var(--text-secondary)' }} title={os || 'Unknown OS'} />;
+    }
   };
 
   const filteredAgents = useMemo(() => {
@@ -377,14 +427,51 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
       <table className="agents-table">
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Agent Type</th>
+            <th>ID</th>
+            <th>Agent</th>
             <th>Status</th>
             <th>IP</th>
             <th>OS</th>
             <th>Priv</th>
-            <th>Callback Interval</th>
-            <th>Last Seen</th>
+            <th>Interval</th>
+            <th>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                <span>Seen</span>
+                {timeFormat === 'timestamp' ? (
+                  <FaClock 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTimeFormat('relative');
+                    }}
+                    style={{ 
+                      cursor: 'pointer', 
+                      fontSize: '11px',
+                      opacity: 0.6,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                    title="Switch to relative time"
+                  />
+                ) : (
+                  <FaHistory 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTimeFormat('timestamp');
+                    }}
+                    style={{ 
+                      cursor: 'pointer', 
+                      fontSize: '11px',
+                      opacity: 0.6,
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0.6'}
+                    title="Switch to timestamp"
+                  />
+                )}
+              </div>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -395,11 +482,36 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
               onClick={() => onAgentClick(agent)}
               onContextMenu={(e) => handleAgentRightClick(e, agent)}
             >
-              <td className="agent-name">{agent.name || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
-              <td className="agent-type">
-                {agent.handlerName ? agent.handlerName : <FaQuestion style={{ color: 'var(--text-secondary)' }} />}
+              <td className="agent-name" title={agent.name || ''}>
+                {agent.name ? (
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    display: 'block',
+                    maxWidth: '150px'
+                  }}>
+                    {agent.name}
+                  </span>
+                ) : (
+                  <FaQuestion style={{ color: 'var(--text-secondary)' }} />
+                )}
               </td>
-              <td>
+              <td className="agent-type" title={agent.handlerName || ''}>
+                {agent.handlerName ? (
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    display: 'block'
+                  }}>
+                    {agent.handlerName}
+                  </span>
+                ) : (
+                  <FaQuestion style={{ color: 'var(--text-secondary)' }} />
+                )}
+              </td>
+              <td title={calculateStatus(agent.lastSeen, agent.reconnectInterval)}>
                 {(() => {
                   const status = calculateStatus(agent.lastSeen, agent.reconnectInterval);
                   return (
@@ -419,8 +531,21 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
                   );
                 })()}
               </td>
-              <td className="agent-ip">{agent.ip || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
-              <td className="agent-os">{agent.os || <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+              <td className="agent-ip" title={agent.ip || ''}>
+                {agent.ip ? (
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    display: 'block'
+                  }}>
+                    {agent.ip}
+                  </span>
+                ) : (
+                  <FaQuestion style={{ color: 'var(--text-secondary)' }} />
+                )}
+              </td>
+              <td className="agent-os">{agent.os ? getOSIcon(agent.os) : <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
               <td className="agent-priv">
                 {(() => {
                   if (!agent.privileges) return null;
@@ -463,13 +588,34 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
                   }
                 })()}
               </td>
-              <td className="agent-callback">
-                {agent.reconnectInterval !== undefined && agent.reconnectInterval > 0
-                  ? `${agent.reconnectInterval}s`
-                  : <FaQuestion style={{ color: 'var(--text-secondary)' }} />
-                }
+              <td className="agent-callback" title={agent.reconnectInterval !== undefined && agent.reconnectInterval > 0 ? `${agent.reconnectInterval} seconds` : ''}>
+                {agent.reconnectInterval !== undefined && agent.reconnectInterval > 0 ? (
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    display: 'block'
+                  }}>
+                    {`${agent.reconnectInterval}s`}
+                  </span>
+                ) : (
+                  <FaQuestion style={{ color: 'var(--text-secondary)' }} />
+                )}
               </td>
-              <td className="agent-lastseen">{agent.lastSeen ? formatLastSeen(agent.lastSeen) : <FaQuestion style={{ color: 'var(--text-secondary)' }} />}</td>
+              <td className="agent-lastseen" title={agent.lastSeen ? formatLastSeenTooltip(agent.lastSeen) : ''}>
+                {agent.lastSeen ? (
+                  <span style={{ 
+                    overflow: 'hidden', 
+                    textOverflow: 'ellipsis', 
+                    whiteSpace: 'nowrap',
+                    display: 'block'
+                  }}>
+                    {formatLastSeen(agent.lastSeen)}
+                  </span>
+                ) : (
+                  <FaQuestion style={{ color: 'var(--text-secondary)' }} />
+                )}
+              </td>
             </tr>
           ))}
         </tbody>

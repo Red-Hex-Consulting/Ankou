@@ -12,6 +12,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [rememberMe, setRememberMe] = useState(true); // Default to true for convenience
   
   const [formData, setFormData] = useState({
     username: '',
@@ -19,6 +20,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     registrationKey: '',
     serverUrl: serverUrl
   });
+
+  // Load saved credentials on mount
+  React.useEffect(() => {
+    const savedUsername = localStorage.getItem('ankou_remembered_username');
+    const savedServerUrl = localStorage.getItem('ankou_remembered_serverUrl');
+    
+    if (savedUsername) {
+      setFormData(prev => ({ ...prev, username: savedUsername }));
+    }
+    if (savedServerUrl) {
+      setFormData(prev => ({ ...prev, serverUrl: savedServerUrl }));
+      setServerUrl(savedServerUrl);
+    }
+  }, [setServerUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,6 +63,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
       const data = await response.json();
       // Update server URL in context
       setServerUrl(formData.serverUrl);
+      
+      // Save credentials if remember me is checked
+      if (rememberMe) {
+        localStorage.setItem('ankou_remembered_username', formData.username);
+        localStorage.setItem('ankou_remembered_serverUrl', formData.serverUrl);
+      } else {
+        // Clear saved credentials if remember me is unchecked
+        localStorage.removeItem('ankou_remembered_username');
+        localStorage.removeItem('ankou_remembered_serverUrl');
+      }
+      
       onLogin(data.token, data.user); // Use actual JWT token from server
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -333,6 +359,41 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             </div>
           )}
 
+          {/* Remember Me Checkbox (only for login) */}
+          {isLogin && (
+            <div style={{ 
+              marginBottom: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                style={{
+                  cursor: 'pointer',
+                  width: '16px',
+                  height: '16px',
+                  accentColor: 'var(--accent-red)'
+                }}
+              />
+              <label 
+                htmlFor="rememberMe"
+                style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.85rem',
+                  fontFamily: "'Pirata One', cursive",
+                  cursor: 'pointer',
+                  userSelect: 'none'
+                }}
+              >
+                Remember username and server
+              </label>
+            </div>
+          )}
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -365,7 +426,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setError('');
-                setFormData({ username: '', password: '', registrationKey: '', serverUrl: serverUrl });
+                // Keep username and serverUrl if remembered, only clear password and registration key
+                const savedUsername = localStorage.getItem('ankou_remembered_username') || '';
+                const savedServerUrl = localStorage.getItem('ankou_remembered_serverUrl') || serverUrl;
+                setFormData({ 
+                  username: savedUsername, 
+                  password: '', 
+                  registrationKey: '', 
+                  serverUrl: savedServerUrl 
+                });
               }}
               style={{
                 background: 'none',

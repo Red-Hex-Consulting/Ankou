@@ -1,60 +1,67 @@
 .context-menu {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  padding: 4px 0;
-  min-width: 160px;
-  backdrop-filter: blur(4px);
+  background: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  border-top: 2px solid #1a1a1a;
+  box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.8);
+  padding: 0;
+  min-width: 200px;
   position: fixed !important;
   z-index: 99999 !important;
-  max-width: 200px;
+  max-width: 220px;
   opacity: 0;
-  transform: scale(0.95);
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition: opacity 0.1s ease-out;
+  font-family: 'Consolas', 'Monaco', monospace;
 }
 
 .context-menu.visible {
   opacity: 1;
-  transform: scale(1);
 }
 
 .context-menu-item {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  padding: 11px 14px;
   cursor: pointer;
-  color: #fff;
-  font-size: 14px;
-  transition: background-color 0.2s ease;
+  color: #e0e0e0;
+  font-size: 13px;
+  transition: all 0.08s ease;
   user-select: none;
+  margin: 0;
+  letter-spacing: 0.3px;
+  border-left: 2px solid transparent;
 }
 
 .context-menu-item:hover {
-  background: #333;
+  background: rgba(255, 50, 50, 0.15);
+  color: #ffffff;
+  border-left-color: var(--accent-red);
 }
 
 .context-menu-item:active {
-  background: #444;
+  background: rgba(255, 50, 50, 0.25);
+  border-left-color: var(--accent-red);
 }
 
 .context-menu-icon {
-  margin-right: 10px;
-  font-size: 14px;
-  color: #00ff00;
+  margin-right: 12px;
+  font-size: 13px;
+  color: #ffffff;
   width: 16px;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .context-menu-item:hover .context-menu-icon {
-  color: #00cc00;
+  color: #ffffff;
+  filter: brightness(1.2);
 }
 
 /* Divider */
 .context-menu-divider {
   height: 1px;
-  background: #333;
-  margin: 4px 0;
+  background: #2a2a2a;
+  margin: 0;
+  border-top: 1px solid #1a1a1a;
 }
 
 /* Wrapper for expandable items */
@@ -68,10 +75,11 @@
 }
 
 .context-menu-chevron {
-  font-size: 12px;
-  transition: transform 0.2s ease;
-  color: #00ff00;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+  color: var(--accent-red);
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .context-menu-chevron.expanded {
@@ -83,44 +91,55 @@
   position: absolute;
   left: 100%;
   top: 0;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  padding: 4px 0;
-  min-width: 180px;
+  background: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  border-top: 2px solid #1a1a1a;
+  box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.8);
+  padding: 0;
+  min-width: 190px;
   max-height: 300px;
   overflow-y: auto;
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
 .context-menu-script {
-  padding: 10px 16px;
-  font-size: 13px;
+  padding: 10px 14px;
+  font-size: 12.5px;
 }
 
 .context-menu-item.disabled {
   cursor: default;
-  opacity: 0.5;
+  opacity: 0.4;
+  color: #666;
 }
 
 .context-menu-item.disabled:hover {
   background: transparent;
+  border-left-color: transparent;
+  color: #666;
 }
 
 /* Danger styling for remove action */
 .context-menu-item-danger {
-  color: #ff5252;
+  color: #ff4444;
 }
 
 .context-menu-item-danger:hover {
-  background: rgba(255, 82, 82, 0.15);
+  background: rgba(255, 50, 50, 0.2);
+  border-left-color: #ff4444;
+  color: #ff6666;
+}
+
+.context-menu-item-danger:active {
+  background: rgba(255, 50, 50, 0.3);
+  border-left-color: #ff4444;
 }
 
 .context-menu-icon-danger {
-  color: #ff5252 !important;
+  color: #ff4444 !important;
 }
 
 .context-menu-item-danger:hover .context-menu-icon-danger {
-  color: #ff6b6b !important;
+  color: #ff6666 !important;
+  filter: brightness(1.2);
 }
