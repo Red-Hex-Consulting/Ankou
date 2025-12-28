@@ -14,9 +14,9 @@ import (
 
 // SSHHandler handles reverse SSH connections for secure C2
 type SSHHandler struct {
-	*BaseHandler // Inherit all common functionality!
-	listener     net.Listener
-	sshConfig    *ssh.ServerConfig
+	*BaseHandler
+	listener  net.Listener
+	sshConfig *ssh.ServerConfig
 }
 
 // NewSSHHandler creates a new SSH handler

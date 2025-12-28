@@ -16,21 +16,19 @@ import (
 	"time"
 )
 
-// identifyAgent extracts the agent type from the request body
-// Returns the agent type and the original body bytes
-// If agent_type is not present or invalid JSON, returns empty string
+// identifyAgent extracts agent_type from the request body JSON
 func identifyAgent(body []byte) string {
 	// Parse JSON to extract agent_type field
 	var bodyWrapper struct {
 		AgentType string          `json:"agent_type,omitempty"`
 		Data      json.RawMessage `json:"data"`
 	}
-	
+
 	if err := json.Unmarshal(body, &bodyWrapper); err != nil {
 		// Not valid JSON or missing fields - return empty
 		return ""
 	}
-	
+
 	return strings.TrimSpace(bodyWrapper.AgentType)
 }
 
@@ -111,12 +109,10 @@ func setupAcceptHandlers(ctx context.Context) error {
 
 	logger.Printf("=================================================================")
 	logger.Printf("GHOST RELAY - Registering Transport Handlers")
-	logger.Printf("Agent types are identified from request body (agent_type field)")
 	logger.Printf("=================================================================")
 
 	// Register each transport handler (defined in separate accept_*.go files)
 	// Comment out any line to disable that transport
-	// Each handler accepts any agent type that declares itself in the body
 	setupPhantasmHandler(ctx, tlsConfig) // accept_phantasm.go - HTTPS on 8080
 	setupGeistHandler(ctx, tlsConfig)    // accept_geist.go - QUIC on 8081
 	setupShadeHandler(ctx)               // accept_shade.go - SSH on 2222
@@ -129,6 +125,4 @@ func setupAcceptHandlers(ctx context.Context) error {
 	return nil
 }
 
-// To add a new transport: create accept_yourprotocol.go with setupYourProtocolHandler()
-// and add setupYourProtocolHandler(ctx, tlsConfig) above.
-// Agents declare their type in the request body using the "agent_type" field.
+// To add a new transport: create accept_yourprotocol.go and call it above

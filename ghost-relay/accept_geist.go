@@ -8,16 +8,14 @@ import (
 	"ghost-relay/internal/accept"
 )
 
-// setupGeistHandler configures and starts the QUIC handler for geist agents
-// Note: With body-based agent identification, this handler can accept any agent type
-// that declares itself in the request body. The "geist" name is for logging only.
+// setupGeistHandler starts the QUIC handler on port 8081
 func setupGeistHandler(ctx context.Context, tlsConfig *tls.Config) {
 	geistConfig := &accept.HandlerConfig{
 		UpstreamURL:      cfg.UpstreamBaseURL.String(),
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "any", // Accepts any agent type from body
+		AgentType:        "any",
 	}
 
 	quicHandler := accept.NewQUICHandler(sendToC2, logger, geistConfig, tlsConfig)
@@ -32,5 +30,5 @@ func setupGeistHandler(ctx context.Context, tlsConfig *tls.Config) {
 	// Register handler for proper shutdown
 	handlers = append(handlers, quicHandler)
 
-	logger.Printf("[+] QUIC handler on %s (accepts any agent type via body)", bindAddr)
+	logger.Printf("[+] QUIC handler on %s", bindAddr)
 }

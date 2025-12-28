@@ -9,7 +9,6 @@ import (
 )
 
 // HTTPSHandler implements AcceptHandler for HTTPS protocol
-// Now super clean - just protocol-specific logic!
 type HTTPSHandler struct {
 	*BaseHandler
 	server    *http.Server
