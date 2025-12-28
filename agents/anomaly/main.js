@@ -13,7 +13,7 @@ const execAsync = promisify(exec);
 
 // Build-time configuration
 const LISTENER_HOST = process.env.ANOMALY_HOST || 'localhost';
-const LISTENER_PORT = process.env.ANOMALY_PORT || '8082';
+const LISTENER_PORT = process.env.ANOMALY_PORT || '8080';
 const LISTENER_ENDPOINT = process.env.ANOMALY_ENDPOINT || '/wiki';
 const HMAC_KEY = process.env.ANOMALY_HMAC_KEY || '76b7142fb03436325c744a35bd1302d0e35ec7e04c1857bdeed0549f051b99fb';
 const RECONNECT_INTERVAL = parseInt(process.env.ANOMALY_INTERVAL || '15', 10);
@@ -127,12 +127,28 @@ function getLocalIP() {
     return 'unknown';
 }
 
+function getOSInfo() {
+    let platform = os.platform();
+    if (platform === 'win32') {
+        platform = 'windows';
+    } else if (platform === 'darwin') {
+        platform = 'macos';
+    }
+
+    let arch = os.arch();
+    if (arch === 'x64') {
+        arch = 'x86_64';
+    }
+    
+    return `${platform} ${arch}`;
+}
+
 async function registerAgent() {
     const registration = {
         uuid: state.agentId,
         name: state.agentId,
         ip: getLocalIP(),
-        os: `${os.platform()} ${os.arch()}`,
+        os: getOSInfo(),
         agent_type: 'anomaly',
         reconnectInterval: state.reconnectInterval
     };
