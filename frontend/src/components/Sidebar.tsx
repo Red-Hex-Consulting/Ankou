@@ -1,7 +1,6 @@
-import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram } from "react-icons/fa";
+import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram, FaRobot, FaGhost } from "react-icons/fa";
 import { GiScythe, GiOctopus, GiMagicGate } from "react-icons/gi";
-import { RiSkull2Fill } from "react-icons/ri";
-import { SiOllama } from "react-icons/si";
+import { IoChatboxEllipsesSharp } from "react-icons/io5";
 import { FaDatabase, FaFileAlt, FaUserSecret, FaFileCode, FaCog } from "react-icons/fa";
 import { LuRadioTower } from "react-icons/lu";
 import packageJson from "../../package.json";
@@ -16,10 +15,11 @@ interface SidebarProps {
 }
 
 const sidebarItems = [
-  { id: "agents", label: "Agents", icon: RiSkull2Fill },
+  { id: "agents", label: "Agents", icon: FaGhost },
   { id: "terminal", label: "Global Commands", icon: GiOctopus },
   { id: "loot", label: "Loot", icon: FaDatabase },
-  { id: "ai", label: "AI Chat", icon: SiOllama },
+  { id: "ai", label: "AI Chat", icon: IoChatboxEllipsesSharp },
+  { id: "autonomy", label: "Autonomous Agent", icon: FaRobot },
   { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
   { id: "listeners", label: "Listeners", icon: LuRadioTower },
   { id: "handlers", label: "Handlers", icon: FaProjectDiagram },
@@ -60,7 +60,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(3, 5).map((item) => {
+        {sidebarItems.slice(3, 6).map((item) => {
           const IconComponent = item.icon;
           return (
             <button
@@ -77,7 +77,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(5, 8).map((item) => {
+        {sidebarItems.slice(6, 9).map((item) => {
           const IconComponent = item.icon;
           return (
             <button
@@ -94,7 +94,7 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
         
         <div className="sidebar-separator"></div>
 
-        {sidebarItems.slice(8).map((item) => {
+        {sidebarItems.slice(9).map((item) => {
           const IconComponent = item.icon;
           return (
             <button

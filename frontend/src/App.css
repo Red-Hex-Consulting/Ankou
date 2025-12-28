@@ -532,7 +532,7 @@ body {
 }
 
 .agents-table td {
-  padding: 16px 20px;
+  padding: 8px 20px;
   border-bottom: 1px solid var(--border-color);
   font-size: 13px;
 }
@@ -543,6 +543,10 @@ body {
 }
 
 .agent-row:hover {
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.agent-row.context-menu-active {
   background-color: rgba(220, 38, 38, 0.1);
 }
 

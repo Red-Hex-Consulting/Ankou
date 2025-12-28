@@ -38,19 +38,19 @@ func (q *QUICHandler) Start(ctx context.Context, addr string) error {
 		TLSConfig: q.tlsConfig,
 	}
 
-	q.Logger().Printf("[quic:%s] Starting QUIC/HTTP3 listener on %s", q.AgentType(), addr)
+	q.Logger().Printf("[quic] Starting QUIC/HTTP3 listener on %s", addr)
 
 	// ListenAndServe blocks, so we need to run it in a goroutine
 	go func() {
 		if err := q.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			q.Logger().Printf("[quic:%s] Server error: %v", q.AgentType(), err)
+			q.Logger().Printf("[quic] Server error: %v", err)
 		}
 	}()
 
 	// Wait for context cancellation and shutdown gracefully
 	go func() {
 		<-ctx.Done()
-		q.Logger().Printf("[quic:%s] Context cancelled, shutting down", q.AgentType())
+		q.Logger().Printf("[quic] Context cancelled, shutting down")
 		q.Stop()
 	}()
 

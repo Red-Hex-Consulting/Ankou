@@ -13,6 +13,16 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
 import { useServerUrl } from "../contexts/ServerContext";
 import "./AI.css";
+import {
+  ACTIVE_TAB_STORAGE_KEY,
+  API_BASE_URL_STORAGE_KEY,
+  API_KEY_STORAGE_KEY,
+  CHAT_TABS_STORAGE_KEY,
+  DEFAULT_API_BASE_URL,
+  LOGGED_IN_STORAGE_KEY,
+  MODELS_STORAGE_KEY,
+  SELECTED_MODEL_STORAGE_KEY,
+} from "../utils/aiSettings";
 
 interface AIProps {
   isActive: boolean;
@@ -82,14 +92,6 @@ interface AgentChatTab {
   error: string | null;
 }
 
-const CHAT_TABS_STORAGE_KEY = "ai_agent_chat_tabs";
-const ACTIVE_TAB_STORAGE_KEY = "ai_agent_active_tab";
-const API_BASE_URL_STORAGE_KEY = "ai_api_base_url";
-const API_KEY_STORAGE_KEY = "ai_api_key";
-const MODELS_STORAGE_KEY = "ai_api_models";
-const LOGGED_IN_STORAGE_KEY = "ai_api_logged_in";
-const SELECTED_MODEL_STORAGE_KEY = "ai_selected_model";
-const DEFAULT_API_BASE_URL = "http://localhost:11434/v1";
 const MAX_COMMAND_HISTORY = 50;
 const COMMAND_TAG_REGEX = /<\s*(?:cmdankou|ankoucmd)\s*>([\s\S]*?)<\/\s*(?:cmdankou|ankoucmd)\s*>/gi;
 const THINK_TAG_REGEX = /<think>([\s\S]*?)<\/think>/gi;

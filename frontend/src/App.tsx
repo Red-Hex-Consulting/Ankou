@@ -4,6 +4,7 @@ import AgentsTable from "./components/AgentsTable";
 import GlobalTerminal from "./components/GlobalTerminal";
 import BottomTerminal from "./components/BottomTerminal";
 import AI from "./components/AI";
+import AutonomousAgent from "./components/AutonomousAgent";
 import PolyEngine from "./components/PolyEngine";
 import Scripts from "./components/Scripts";
 import Loot from "./components/Loot";
@@ -94,6 +95,8 @@ function AppContent() {
         );
       case "ai":
         return <AI isActive={activeTab === "ai"} />;
+      case "autonomy":
+        return <AutonomousAgent isActive={activeTab === "autonomy"} />;
       case "poly-engine":
         return <PolyEngine isActive={activeTab === "poly-engine"} />;
       case "loot":
