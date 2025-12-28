@@ -68,7 +68,7 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 | **phantasm** | Windows  | Go                 | HTTPS                       |
 | **anomaly**  | Windows           | Node.js (inject in C) | HTTPS   |
 | **shade**  | Linux           | Go | SSH   |
-| **(Planned) Wraith** | Linux | Rust         | HTTP3/QUIC             |
+| **wraith** | Linux | Rust         | HTTP3/QUIC             |
 
 > See [Agent Catalog](docs/agents.md) for details on each agent's design, protocol, and tasking model.
 
