@@ -50,7 +50,7 @@ func setupMyProtocolHandler(ctx context.Context, tlsConfig *tls.Config) {
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "myagent", // binds transport → agent type at the relay
+		AgentType:        "any", // accepts any agent type from request body
 	}
 
 	handler := accept.NewMyProtocolHandler(sendToC2, logger, cfg, tlsConfig)
@@ -61,7 +61,7 @@ func setupMyProtocolHandler(ctx context.Context, tlsConfig *tls.Config) {
 		}
 	}()
 
-	logger.Printf("✓ Registered myagent handler (MyProtocol on :9000)")
+	logger.Printf("✓ MyProtocol handler on :9000 (accepts any agent type)")
 }
 ```
 
@@ -117,28 +117,28 @@ Edit `ghost-relay/accept.go` and add a single line inside `setupAcceptHandlers`:
 setupMyProtocolHandler(ctx, tlsConfig)
 ```
 
-That’s it. The relay now forwards `MyProtocol` traffic to the C2, automatically injecting `X-Agent-Type: myagent` and signing the request with the configured HMAC key.
+That's it. The relay now forwards `MyProtocol` traffic to the C2, signing the request with the configured HMAC key and passing the agent type straight through from the request body.
 
 ---
 
-## Why It’s This Simple
+## Why It's This Simple
 
 `BaseHandler` (see `internal/accept/base.go`) centralizes everything that used to be duplicated per transport:
 
 - **Logging** (incoming request, headers, timing)
 - **Body reading / size limits**
-- **Header normalization & injection of `X-Agent-Type`**
 - **C2 forwarding + TLS options via `HandlerConfig`**
 - **Response proxying** back to the agent
 
-All you implement is “how do I listen for my protocol, and how do I translate it into an HTTP-style request?” Rounded out with `common.go`, you even get the standard endpoints (`/wiki/api/register`, `/wiki/api/heartbeat`, `/wiki/api/command-response`, `/wiki/api/poll`, `/wiki`) for free.
+All you implement is "how do I listen for my protocol, and how do I translate it into an HTTP-style request?" Rounded out with `common.go`, you even get the standard endpoints (`/wiki/api/register`, `/wiki/api/heartbeat`, `/wiki/api/command-response`, `/wiki/api/poll`, `/wiki`) for free.
 
 ---
 
 ## Tips & Patterns
 
-- **Multiple transports for the same agent**: share the same `AgentType` string in `HandlerConfig`. The relay binds protocols to agent families, keeping agent metadata off the wire.
-- **Non-HTTP protocols**: parse the packet, build an `http.Request` (method, URL, body), then call `BaseHandler.HandleHTTPRequest`. See `dns_example.go` for a concrete flow.
+- **Agent type identification**: agents declare their type in the request body with `"agent_type": "myagent"`. The relay reads this for logging but doesn't modify it—everything passes through to the C2 server unchanged. No port-based coupling means any agent can use any transport.
+- **Multiple agent types per transport**: set `AgentType: "any"` in `HandlerConfig` and let agents identify themselves in their payloads. One HTTPS handler can serve phantasm, anomaly, and whatever else you build.
+- **Non-HTTP protocols**: parse the packet, build an `http.Request` (method, URL, body), then call `BaseHandler.HandleHTTPRequest`. See `accept_geist.go` for QUIC or `accept_shade.go` for SSH examples.
 - **Graceful shutdown**: watch the `ctx` passed into `Start` and cleanup resources in `Stop`.
 - **Testing**: `BaseHandler` is designed for dependency injection; you can pass a mock `sendToC2` and assert translations in isolation.
 

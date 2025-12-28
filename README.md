@@ -27,10 +27,12 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 ## Feature Spotlight
 
 ### 1. Modular Transports, Handlers & Custom Agents
-- Ghost Relay binds transports to agent families (e.g., QUIC → geist) and injects the minimal metadata (`X-Agent-Type`, HMAC headers) the server needs.
+- **Body-based agent identification** - Agents declare their type in request payloads, allowing unlimited agent types to share any transport without port coupling.
+- Ghost Relay forwards traffic transparently, with agent types routed by the server based on body content rather than port bindings.
 - Add new handlers through JSON config (`server/agent_handlers/handler_*.json`). The UI instantly surfaces supported commands for operators to use.
 - Custom transport in mind? Follow the [ghost-relay new transport guide](docs/ghost-relay-new-transport.md) and you'll have a production-ready module in minutes.
 - All these features provide an easy way to build a custom agent under it all; once your transport is set, take a look at the current agents and build one around your new handler with whatever TTPs you love to use.
+- See [Body-Based Agent Identification](docs/body-based-agent-identification.md) for details on the flexible agent type system.
 
 ### 2. Human-in-the-Loop AI Companion
 - The client's **AI Operations** panel talks to any OpenAI-compatible endpoint so all target data can stay on hosts you control (OpenAI, LM Studio, Ollama, OpenWebUI, etc.).
@@ -66,7 +68,7 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 | **phantasm** | Windows  | Rust and Go                 | HTTPS                       |
 | **anomaly**  | Windows           | Node.js (inject in C) | HTTPS   |
 | **shade**  | Linux           | Go | SSH   |
-| **(Planned) Wraith** | Linux | Rust         | HTTP3/QUIC             |
+| **wraith** | Linux | Rust         | HTTP3/QUIC             |
 
 > See [Agent Catalog](docs/agents.md) for details on each agent's design, protocol, and tasking model.
 

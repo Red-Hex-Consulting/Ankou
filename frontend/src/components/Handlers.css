@@ -12,16 +12,26 @@
 .handler-command-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 12px 16px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
 }
 
 .handler-command-chip {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  position: relative;
   font-size: 11px;
-  color: var(--text-primary);
+  font-family: 'Consolas', 'Monaco', monospace;
+  color: #e0e0e0;
+  line-height: 1.4;
+}
+
+.handler-command-chip::before {
+  content: '>';
+  margin-right: 6px;
+  color: var(--accent-red);
+  font-weight: bold;
 }
 
 .handler-empty,

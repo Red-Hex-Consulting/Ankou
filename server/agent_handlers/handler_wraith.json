@@ -1,0 +1,20 @@
+{
+  "id": "handler_wraith",
+  "agentName": "wraith",
+  "agentHttpHeaderId": "wraith",
+  "supportedCommands": [
+    "ls",
+    "get",
+    "put",
+    "cd",
+    "kill",
+    "ps",
+    "exec",
+    "reconnect",
+    "injectsc",
+    "rm",
+    "rmdir",
+    "jitter"
+  ]
+}
+

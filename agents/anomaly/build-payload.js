@@ -50,7 +50,7 @@ async function main() {
     // Prompt for configuration
     const config = {
         host: await prompt('C2 Relay Host [localhost]: ', 'localhost'),
-        port: await prompt('C2 Relay Port [8082]: ', '8082'),
+        port: await prompt('C2 Relay Port [8080]: ', '8080'),
         endpoint: await prompt('C2 Endpoint [/wiki]: ', '/wiki'),
         hmac: await prompt('HMAC Key (hex): '),
         interval: await prompt('Beacon Interval (seconds) [15]: ', '15'),
