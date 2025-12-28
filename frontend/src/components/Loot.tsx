@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
 import { FaFolder, FaFolderOpen, FaFile, FaIdCard, FaChevronRight, FaChevronDown, FaCheckCircle, FaDownload, FaSpinner, FaThumbsUp, FaExclamationTriangle, FaSearch, FaArrowLeft, FaDatabase, FaFileCode, FaFileWord, FaFileExcel, FaFilePdf, FaFileImage, FaFileArchive, FaFileAlt, FaQuestion, FaImages } from "react-icons/fa";
-import { RiSkull2Fill } from "react-icons/ri";
+import { FaGhost } from "react-icons/fa";
 import "./Loot.css";
 
 interface LootFile {
@@ -1270,7 +1270,7 @@ export default function Loot({ isActive }: LootProps) {
               <FaArrowLeft />
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <RiSkull2Fill style={{ color: 'var(--accent-red)', fontSize: '18px' }} />
+              <FaGhost style={{ color: 'var(--accent-red)', fontSize: '18px' }} />
               <h2 style={{
                 color: 'var(--text-primary)',
                 margin: '0',

@@ -1,6 +1,5 @@
-import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram, FaRobot } from "react-icons/fa";
+import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram, FaRobot, FaGhost } from "react-icons/fa";
 import { GiScythe, GiOctopus, GiMagicGate } from "react-icons/gi";
-import { RiSkull2Fill } from "react-icons/ri";
 import { IoChatboxEllipsesSharp } from "react-icons/io5";
 import { FaDatabase, FaFileAlt, FaUserSecret, FaFileCode, FaCog } from "react-icons/fa";
 import { LuRadioTower } from "react-icons/lu";
@@ -16,7 +15,7 @@ interface SidebarProps {
 }
 
 const sidebarItems = [
-  { id: "agents", label: "Agents", icon: RiSkull2Fill },
+  { id: "agents", label: "Agents", icon: FaGhost },
   { id: "terminal", label: "Global Commands", icon: GiOctopus },
   { id: "loot", label: "Loot", icon: FaDatabase },
   { id: "ai", label: "AI Chat", icon: IoChatboxEllipsesSharp },

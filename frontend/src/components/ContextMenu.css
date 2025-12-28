@@ -41,14 +41,14 @@
 
 .context-menu-icon {
   font-size: 12px;
-  color: #ffffff;
+  color: var(--success-green);
   flex-shrink: 0;
   width: auto;
   text-align: left;
 }
 
 .context-menu-item:hover .context-menu-icon {
-  color: #ffffff;
+  color: var(--success-green);
   filter: brightness(1.2);
 }
 
