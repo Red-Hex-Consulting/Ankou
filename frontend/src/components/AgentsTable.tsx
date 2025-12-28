@@ -189,6 +189,14 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
     setContextMenu({ visible: false, x: 0, y: 0, agent: null });
   };
 
+  const handleContextMenuScreenshot = () => {
+    if (!contextMenu.agent || !sendCommand) return;
+
+    const username = user?.username || 'operator';
+    sendCommand(contextMenu.agent.id, 'screenshot', username);
+    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+  };
+
   const handleScriptExecute = (script: { id: string; name: string; commands: string[]; createdAt: string }) => {
     if (!contextMenu.agent || !sendCommand) return;
 
@@ -478,7 +486,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
           {filteredAgents && filteredAgents.map((agent) => (
             <tr
               key={agent.id}
-              className="agent-row"
+              className={`agent-row ${contextMenu.visible && contextMenu.agent?.id === agent.id ? 'context-menu-active' : ''}`}
               onClick={() => onAgentClick(agent)}
               onContextMenu={(e) => handleAgentRightClick(e, agent)}
             >
@@ -630,6 +638,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         onClose={handleContextMenuClose}
         onPut={handleContextMenuPut}
         onInject={handleContextMenuInject}
+        onScreenshot={handleContextMenuScreenshot}
         onScriptExecute={handleScriptExecute}
         onRemove={handleContextMenuRemove}
       />

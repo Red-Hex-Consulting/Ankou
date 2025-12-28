@@ -1,7 +1,7 @@
 import { FaHeart, FaChevronLeft, FaChevronRight, FaSignOutAlt, FaProjectDiagram, FaRobot } from "react-icons/fa";
 import { GiScythe, GiOctopus, GiMagicGate } from "react-icons/gi";
 import { RiSkull2Fill } from "react-icons/ri";
-import { SiOllama } from "react-icons/si";
+import { IoChatboxEllipsesSharp } from "react-icons/io5";
 import { FaDatabase, FaFileAlt, FaUserSecret, FaFileCode, FaCog } from "react-icons/fa";
 import { LuRadioTower } from "react-icons/lu";
 import packageJson from "../../package.json";
@@ -19,7 +19,7 @@ const sidebarItems = [
   { id: "agents", label: "Agents", icon: RiSkull2Fill },
   { id: "terminal", label: "Global Commands", icon: GiOctopus },
   { id: "loot", label: "Loot", icon: FaDatabase },
-  { id: "ai", label: "AI Chat", icon: SiOllama },
+  { id: "ai", label: "AI Chat", icon: IoChatboxEllipsesSharp },
   { id: "autonomy", label: "Autonomous Agent", icon: FaRobot },
   { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
   { id: "listeners", label: "Listeners", icon: LuRadioTower },

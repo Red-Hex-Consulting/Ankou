@@ -1,16 +1,15 @@
 .context-menu {
   background: #0d0d0d;
   border: 1px solid #2a2a2a;
-  border-top: 2px solid #1a1a1a;
-  box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   padding: 0;
-  min-width: 200px;
+  min-width: 180px;
   position: fixed !important;
   z-index: 99999 !important;
-  max-width: 220px;
   opacity: 0;
   transition: opacity 0.1s ease-out;
-  font-family: 'Consolas', 'Monaco', monospace;
+  color: #e0e0e0;
+  font-size: 12px;
 }
 
 .context-menu.visible {
@@ -20,35 +19,32 @@
 .context-menu-item {
   display: flex;
   align-items: center;
-  padding: 11px 14px;
+  padding: 6px 12px;
   cursor: pointer;
   color: #e0e0e0;
-  font-size: 13px;
-  transition: all 0.08s ease;
+  font-size: 12px;
+  transition: background-color 0.15s ease;
   user-select: none;
   margin: 0;
-  letter-spacing: 0.3px;
-  border-left: 2px solid transparent;
+  gap: 8px;
+  position: relative;
 }
 
 .context-menu-item:hover {
   background: rgba(255, 50, 50, 0.15);
   color: #ffffff;
-  border-left-color: var(--accent-red);
 }
 
 .context-menu-item:active {
   background: rgba(255, 50, 50, 0.25);
-  border-left-color: var(--accent-red);
 }
 
 .context-menu-icon {
-  margin-right: 12px;
-  font-size: 13px;
+  font-size: 12px;
   color: #ffffff;
-  width: 16px;
-  text-align: center;
   flex-shrink: 0;
+  width: auto;
+  text-align: left;
 }
 
 .context-menu-item:hover .context-menu-icon {
@@ -61,7 +57,7 @@
   height: 1px;
   background: #2a2a2a;
   margin: 0;
-  border-top: 1px solid #1a1a1a;
+  border: none;
 }
 
 /* Wrapper for expandable items */
@@ -75,7 +71,7 @@
 }
 
 .context-menu-chevron {
-  font-size: 11px;
+  font-size: 12px;
   transition: transform 0.15s ease;
   color: var(--accent-red);
   margin-left: auto;
@@ -93,18 +89,17 @@
   top: 0;
   background: #0d0d0d;
   border: 1px solid #2a2a2a;
-  border-top: 2px solid #1a1a1a;
-  box-shadow: 2px 2px 12px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   padding: 0;
-  min-width: 190px;
+  min-width: 140px;
   max-height: 300px;
   overflow-y: auto;
-  margin-left: 2px;
+  margin-left: 4px;
 }
 
 .context-menu-script {
-  padding: 10px 14px;
-  font-size: 12.5px;
+  padding: 6px 12px;
+  font-size: 12px;
 }
 
 .context-menu-item.disabled {
@@ -115,7 +110,6 @@
 
 .context-menu-item.disabled:hover {
   background: transparent;
-  border-left-color: transparent;
   color: #666;
 }
 
@@ -126,13 +120,11 @@
 
 .context-menu-item-danger:hover {
   background: rgba(255, 50, 50, 0.2);
-  border-left-color: #ff4444;
   color: #ff6666;
 }
 
 .context-menu-item-danger:active {
   background: rgba(255, 50, 50, 0.3);
-  border-left-color: #ff4444;
 }
 
 .context-menu-icon-danger {

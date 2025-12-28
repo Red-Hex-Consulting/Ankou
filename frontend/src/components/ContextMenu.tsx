@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FaUpload, FaSyringe, FaTimes, FaChevronRight, FaCog, FaTerminal, FaTrashAlt } from 'react-icons/fa';
+import { FaUpload, FaSyringe, FaTimes, FaChevronRight, FaCog, FaTerminal, FaTrashAlt, FaCamera } from 'react-icons/fa';
 import { getScripts } from './Scripts';
 
 interface Script {
@@ -20,11 +20,12 @@ interface ContextMenuProps {
   onClose: () => void;
   onPut: () => void;
   onInject: () => void;
+  onScreenshot: () => void;
   onScriptExecute: (script: Script) => void;
   onRemove: () => void;
 }
 
-export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScriptExecute, onRemove }: ContextMenuProps) {
+export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScreenshot, onScriptExecute, onRemove }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPosition, setAdjustedPosition] = useState({ x, y });
   const [scriptsExpanded, setScriptsExpanded] = useState(false);
@@ -42,6 +43,17 @@ export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose,
     if (!handler) return false;
 
     return handler.supportedCommands.includes('injectsc');
+  }, [agent, handlers]);
+
+  // Check if agent supports screenshot
+  const canScreenshot = React.useMemo(() => {
+    if (!agent || !handlers) return false;
+
+    const handler = handlers.find(h => h.agentName === agent.handlerName);
+
+    if (!handler) return false;
+
+    return handler.supportedCommands.includes('screenshot');
   }, [agent, handlers]);
 
   // Calculate smart positioning to keep menu within viewport
@@ -144,6 +156,12 @@ export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose,
         <div className="context-menu-item" onClick={onInject}>
           <FaSyringe className="context-menu-icon" />
           <span>Inject</span>
+        </div>
+      )}
+      {canScreenshot && (
+        <div className="context-menu-item" onClick={onScreenshot}>
+          <FaCamera className="context-menu-icon" />
+          <span>Screenshot</span>
         </div>
       )}
 
