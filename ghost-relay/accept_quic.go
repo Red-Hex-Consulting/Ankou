@@ -8,17 +8,16 @@ import (
 	"ghost-relay/internal/accept"
 )
 
-// setupGeistHandler starts the QUIC handler on port 8081
-func setupGeistHandler(ctx context.Context, tlsConfig *tls.Config) {
-	geistConfig := &accept.HandlerConfig{
+// setupQUICHandler starts the QUIC handler on port 8081
+func setupQUICHandler(ctx context.Context, tlsConfig *tls.Config) {
+	quicConfig := &accept.HandlerConfig{
 		UpstreamURL:      cfg.UpstreamBaseURL.String(),
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "any",
 	}
 
-	quicHandler := accept.NewQUICHandler(sendToC2, logger, geistConfig, tlsConfig)
+	quicHandler := accept.NewQUICHandler(sendToC2, logger, quicConfig, tlsConfig)
 
 	bindAddr := fmt.Sprintf("%s:8081", cfg.ListenAddr)
 	go func() {
@@ -32,3 +31,4 @@ func setupGeistHandler(ctx context.Context, tlsConfig *tls.Config) {
 
 	logger.Printf("[+] QUIC handler on %s", bindAddr)
 }
+

@@ -13,22 +13,15 @@ type BaseHandler struct {
 	logger       *log.Logger
 	config       *HandlerConfig
 	protocolName string
-	agentType    string
 }
 
 // NewBaseHandler creates a new base handler with common functionality
 func NewBaseHandler(sendToC2 SendToC2Func, logger *log.Logger, config *HandlerConfig, protocolName string) *BaseHandler {
-	agentType := config.AgentType
-	if agentType == "" {
-		agentType = "any" // Default for handlers that accept any agent type
-	}
-
 	return &BaseHandler{
 		sendToC2:     sendToC2,
 		logger:       logger,
 		config:       config,
 		protocolName: protocolName,
-		agentType:    agentType,
 	}
 }
 
@@ -37,7 +30,7 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 	// Read request body
 	body, err := ReadBody(w, req, b.config.RequestReadLimit)
 	if err != nil {
-		b.logger.Printf("[%s:%s:%s] failed to read body: %v", b.protocolName, b.agentType, endpoint, err)
+		b.logger.Printf("[%s:%s] failed to read body: %v", b.protocolName, endpoint, err)
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
@@ -49,7 +42,7 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 	// Send to C2
 	resp, err := b.sendToC2(ctx, endpoint, headers, body)
 	if err != nil {
-		b.logger.Printf("[%s:%s:%s] C2 send error: %v", b.protocolName, b.agentType, endpoint, err)
+		b.logger.Printf("[%s:%s] C2 send error: %v", b.protocolName, endpoint, err)
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -62,7 +55,7 @@ func (b *BaseHandler) HandleHTTPRequest(ctx context.Context, endpoint string, re
 
 	// Copy response back to client
 	if err := CopyResponse(w, resp, b.logger); err != nil {
-		b.logger.Printf("[%s:%s:%s] failed to copy response: %v", b.protocolName, b.agentType, endpoint, err)
+		b.logger.Printf("[%s:%s] failed to copy response: %v", b.protocolName, endpoint, err)
 		return
 	}
 }
@@ -105,9 +98,4 @@ func (b *BaseHandler) Config() *HandlerConfig {
 // ProtocolName returns the protocol name
 func (b *BaseHandler) ProtocolName() string {
 	return b.protocolName
-}
-
-// AgentType returns the agent type this handler serves
-func (b *BaseHandler) AgentType() string {
-	return b.agentType
 }

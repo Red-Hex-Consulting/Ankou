@@ -29,7 +29,7 @@ func NewSSHHandler(sendToC2 SendToC2Func, logger *log.Logger, config *HandlerCon
 
 // Start begins listening for SSH connections
 func (h *SSHHandler) Start(ctx context.Context, addr string) error {
-	h.logger.Printf("[%s:%s] Starting SSH listener on %s", h.ProtocolName(), h.AgentType(), addr)
+	h.logger.Printf("[%s] Starting SSH listener on %s", h.ProtocolName(), addr)
 
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -42,7 +42,7 @@ func (h *SSHHandler) Start(ctx context.Context, addr string) error {
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	h.logger.Printf("[%s:%s] Shutting down SSH listener", h.ProtocolName(), h.AgentType())
+	h.logger.Printf("[%s] Shutting down SSH listener", h.ProtocolName())
 	return h.listener.Close()
 }
 
@@ -66,7 +66,7 @@ func (h *SSHHandler) acceptConnections(ctx context.Context) {
 				if ctx.Err() != nil {
 					return
 				}
-				h.logger.Printf("[%s:%s] Accept error: %v", h.ProtocolName(), h.AgentType(), err)
+				h.logger.Printf("[%s] Accept error: %v", h.ProtocolName(), err)
 				continue
 			}
 
@@ -92,13 +92,13 @@ func (h *SSHHandler) handleSSHConnection(ctx context.Context, conn net.Conn) {
 	// Perform SSH handshake
 	sshConn, chans, reqs, err := ssh.NewServerConn(conn, h.sshConfig)
 	if err != nil {
-		h.logger.Printf("[%s:%s] SSH handshake failed: %v", h.ProtocolName(), h.AgentType(), err)
+		h.logger.Printf("[%s] SSH handshake failed: %v", h.ProtocolName(), err)
 		return
 	}
 	defer sshConn.Close()
 
-	h.logger.Printf("[%s:%s] SSH connection established from %s (user: %s)",
-		h.ProtocolName(), h.AgentType(), conn.RemoteAddr(), sshConn.User())
+	h.logger.Printf("[%s] SSH connection established from %s (user: %s)",
+		h.ProtocolName(), conn.RemoteAddr(), sshConn.User())
 
 	// Discard global requests
 	go ssh.DiscardRequests(reqs)
@@ -125,7 +125,7 @@ func (h *SSHHandler) handleSSHConnection(ctx context.Context, conn net.Conn) {
 
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
-			h.logger.Printf("[%s:%s] Channel accept error: %v", h.ProtocolName(), h.AgentType(), err)
+			h.logger.Printf("[%s] Channel accept error: %v", h.ProtocolName(), err)
 			continue
 		}
 
@@ -180,7 +180,7 @@ func (h *SSHHandler) handleExecRequest(ctx context.Context, channel ssh.Channel,
 	// Agent sends JSON via session.Stdin
 	message, err := io.ReadAll(channel)
 	if err != nil {
-		h.logger.Printf("[%s:%s] Failed to read message: %v", h.ProtocolName(), h.AgentType(), err)
+		h.logger.Printf("[%s] Failed to read message: %v", h.ProtocolName(), err)
 		channel.Write([]byte(fmt.Sprintf(`{"error": "failed to read: %v"}`, err)))
 		return
 	}
@@ -188,7 +188,7 @@ func (h *SSHHandler) handleExecRequest(ctx context.Context, channel ssh.Channel,
 	// Parse the message to extract the endpoint
 	var payload map[string]interface{}
 	if err := json.Unmarshal(message, &payload); err != nil {
-		h.logger.Printf("[%s:%s] Failed to parse message: %v", h.ProtocolName(), h.AgentType(), err)
+		h.logger.Printf("[%s] Failed to parse message: %v", h.ProtocolName(), err)
 		channel.Write([]byte(fmt.Sprintf(`{"error": "invalid JSON: %v"}`, err)))
 		return
 	}
@@ -206,7 +206,7 @@ func (h *SSHHandler) handleExecRequest(ctx context.Context, channel ssh.Channel,
 	// Forward to C2
 	resp, err := h.sendToC2(ctx, endpoint, headers, message)
 	if err != nil {
-		h.logger.Printf("[%s:%s] Failed to forward to C2: %v", h.ProtocolName(), h.AgentType(), err)
+		h.logger.Printf("[%s] Failed to forward to C2: %v", h.ProtocolName(), err)
 		channel.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 		channel.Close()
 		return
@@ -216,16 +216,16 @@ func (h *SSHHandler) handleExecRequest(ctx context.Context, channel ssh.Channel,
 	respBody, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		h.logger.Printf("[%s:%s] Failed to read C2 response: %v", h.ProtocolName(), h.AgentType(), err)
+		h.logger.Printf("[%s] Failed to read C2 response: %v", h.ProtocolName(), err)
 		channel.Close()
 		return
 	}
 
 	// Send response back to agent via SSH channel
-	h.logger.Printf("[%s:%s] Sending %d bytes response back", h.ProtocolName(), h.AgentType(), len(respBody))
+	h.logger.Printf("[%s] Sending %d bytes response back", h.ProtocolName(), len(respBody))
 	channel.Write(respBody)
 
 	// Close the channel to signal completion (this allows CombinedOutput to return)
 	channel.Close()
-	h.logger.Printf("[%s:%s] Channel closed, session complete", h.ProtocolName(), h.AgentType())
+	h.logger.Printf("[%s] Channel closed, session complete", h.ProtocolName())
 }

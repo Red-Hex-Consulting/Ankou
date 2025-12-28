@@ -13,14 +13,13 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// setupShadeHandler starts the SSH handler on port 2222
-func setupShadeHandler(ctx context.Context) {
-	shadeConfig := &accept.HandlerConfig{
+// setupSSHHandler starts the SSH handler on port 2222
+func setupSSHHandler(ctx context.Context) {
+	sshConfig := &accept.HandlerConfig{
 		UpstreamURL:      cfg.UpstreamBaseURL.String(),
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "any",
 	}
 
 	// Generate ephemeral SSH host key
@@ -31,18 +30,18 @@ func setupShadeHandler(ctx context.Context) {
 	}
 
 	// Create SSH server config
-	sshConfig := &ssh.ServerConfig{
+	sshServerConfig := &ssh.ServerConfig{
 		// No password authentication needed - we authenticate via HMAC in the forwarded requests
 		NoClientAuth: true,
 	}
-	sshConfig.AddHostKey(hostKey)
+	sshServerConfig.AddHostKey(hostKey)
 
-	sshHandler := accept.NewSSHHandler(sendToC2, logger, shadeConfig, sshConfig)
+	sshHandler := accept.NewSSHHandler(sendToC2, logger, sshConfig, sshServerConfig)
 
 	bindAddr := fmt.Sprintf("%s:2222", cfg.ListenAddr)
 	go func() {
 		if err := sshHandler.Start(ctx, bindAddr); err != nil {
-			logger.Printf("Shade SSH handler error: %v", err)
+			logger.Printf("SSH handler error: %v", err)
 		}
 	}()
 
@@ -74,3 +73,4 @@ func generateSSHHostKey() (ssh.Signer, error) {
 
 	return signer, nil
 }
+

@@ -8,17 +8,16 @@ import (
 	"ghost-relay/internal/accept"
 )
 
-// setupPhantasmHandler starts the HTTPS handler on port 8080
-func setupPhantasmHandler(ctx context.Context, tlsConfig *tls.Config) {
-	phantasmConfig := &accept.HandlerConfig{
+// setupHTTPSHandler starts the HTTPS handler on port 8080
+func setupHTTPSHandler(ctx context.Context, tlsConfig *tls.Config) {
+	httpsConfig := &accept.HandlerConfig{
 		UpstreamURL:      cfg.UpstreamBaseURL.String(),
 		Timeout:          int(cfg.ClientTimeout.Seconds()),
 		InsecureTLS:      cfg.InsecureSkipVerify,
 		RequestReadLimit: cfg.RequestReadLimit,
-		AgentType:        "any",
 	}
 
-	httpsHandler := accept.NewHTTPSHandler(sendToC2, logger, phantasmConfig, tlsConfig)
+	httpsHandler := accept.NewHTTPSHandler(sendToC2, logger, httpsConfig, tlsConfig)
 
 	bindAddr := fmt.Sprintf("%s:8080", cfg.ListenAddr)
 	go func() {

@@ -113,10 +113,9 @@ func setupAcceptHandlers(ctx context.Context) error {
 
 	// Register each transport handler (defined in separate accept_*.go files)
 	// Comment out any line to disable that transport
-	setupPhantasmHandler(ctx, tlsConfig) // accept_phantasm.go - HTTPS on 8080
-	setupGeistHandler(ctx, tlsConfig)    // accept_geist.go - QUIC on 8081
-	setupShadeHandler(ctx)               // accept_shade.go - SSH on 2222
-	// setupAnomalyHandler(ctx, tlsConfig)  // REMOVED: Duplicate HTTPS handler (use 8080 instead)
+	setupHTTPSHandler(ctx, tlsConfig) // accept_https.go - HTTPS on 8080 (Phantasm, Anomaly)
+	setupQUICHandler(ctx, tlsConfig)  // accept_quic.go - QUIC on 8081 (Geist, Wraith)
+	setupSSHHandler(ctx)              // accept_ssh.go - SSH on 2222 (Shade)
 
 	logger.Printf("=================================================================")
 	logger.Printf("Ghost Relay ready - %d transport handlers active", 3)
@@ -125,4 +124,4 @@ func setupAcceptHandlers(ctx context.Context) error {
 	return nil
 }
 
-// To add a new transport: create accept_yourprotocol.go and call it above
+// To add a new transport: create accept_<protocol>.go and call it above

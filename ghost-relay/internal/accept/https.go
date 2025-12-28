@@ -42,19 +42,19 @@ func (h *HTTPSHandler) Start(ctx context.Context, addr string) error {
 		MaxHeaderBytes:    1 << 20,                       // 1 MB max header size
 	}
 
-	h.Logger().Printf("[https:%s] Starting HTTPS listener on %s", h.AgentType(), addr)
+	h.Logger().Printf("[https] Starting HTTPS listener on %s", addr)
 
 	// Start server in goroutine to not block
 	go func() {
 		if err := h.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			h.Logger().Printf("[https:%s] Server error: %v", h.AgentType(), err)
+			h.Logger().Printf("[https] Server error: %v", err)
 		}
 	}()
 
 	// Wait for context cancellation
 	go func() {
 		<-ctx.Done()
-		h.Logger().Printf("[https:%s] Context cancelled, shutting down", h.AgentType())
+		h.Logger().Printf("[https] Context cancelled, shutting down")
 		h.Stop()
 	}()
 

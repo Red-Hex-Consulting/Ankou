@@ -36,5 +36,4 @@ type HandlerConfig struct {
 	Timeout          int
 	InsecureTLS      bool
 	RequestReadLimit int64
-	AgentType        string // Agent type this handler serves (e.g., "phantasm", "geist")
 }
