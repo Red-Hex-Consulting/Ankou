@@ -19,8 +19,12 @@ import {
   API_KEY_STORAGE_KEY,
   CHAT_TABS_STORAGE_KEY,
   DEFAULT_API_BASE_URL,
+  DEFAULT_MAX_HISTORY_MESSAGES,
+  DEFAULT_PROMPT_HISTORY_LIMIT,
   LOGGED_IN_STORAGE_KEY,
+  MAX_HISTORY_MESSAGES_KEY,
   MODELS_STORAGE_KEY,
+  PROMPT_HISTORY_LIMIT_KEY,
   SELECTED_MODEL_STORAGE_KEY,
 } from "../utils/aiSettings";
 
@@ -479,7 +483,8 @@ const buildAgentContextPrompt = (
   agent: Agent,
   commands: Command[],
   handlers: any[] = [],
-  isExecMode: boolean = false
+  isExecMode: boolean = false,
+  promptHistoryLimit: number = DEFAULT_PROMPT_HISTORY_LIMIT
 ): string => {
   const agentHandler = handlers.find(handler =>
     handler.agentHttpHeaderId === agent.handlerId ||
@@ -487,8 +492,8 @@ const buildAgentContextPrompt = (
   );
 
   const lines: string[] = [
-    "You are assisting a penetration tester using a C2 (Command & Control) framework.",
-    "Your role is to help the operator understand and interact with compromised endpoints.",
+    "You are an AI assistant helping a penetration tester operate a C2 (Command & Control) framework.",
+    "Your role is to help the operator understand compromised endpoints and suggest useful actions.",
     "",
     `=== TARGET AGENT ===`,
     `Agent: ${agent.name}`,
@@ -497,23 +502,32 @@ const buildAgentContextPrompt = (
     `Status: Last seen ${formatTimestamp(agent.lastSeen)}`,
     `Beacon Interval: ${agent.reconnectInterval || 'unknown'} seconds`,
     "",
-    "=== INSTRUCTIONS ===",
-    "1. Answer questions about the agent using the context above",
-    "2. Suggest relevant commands to help the operator achieve their goals",
-    "3. When suggesting a command, wrap it in <ankoucmd>command here</ankoucmd> tags",
-    "4. The wrapped command becomes a clickable button for easy execution",
-    "5. Be proactive - suggest useful next steps based on command history",
+    "=== RESPONSE GUIDELINES ===",
+    "1. Be conversational and helpful - engage in dialogue with the operator",
+    "2. When suggesting commands, ALWAYS explain:",
+    "   - What the command does",
+    "   - Why it's relevant to the operator's goal",
+    "   - What to look for in the output",
+    "3. Do NOT suggest commands unprompted after command output is shown",
+    "   - Wait for the operator to ask questions or request suggestions",
+    "   - When output appears, analyze it and offer insights, but don't auto-suggest more commands",
+    "4. Check command history before suggesting - avoid repeating recently executed commands",
+    "5. Ask clarifying questions when the operator's goal is unclear",
+    "6. Vary your suggestions based on context - don't default to the same commands",
     "",
-    "Command Format Rules:",
+    "=== COMMAND FORMAT ===",
+    "When suggesting an executable command, wrap it in <ankoucmd>command</ankoucmd> tags.",
+    "This creates a clickable button for easy execution.",
+    "",
+    "Format rules:",
     "  • Include the full command with all arguments inside the tags",
     "  • Do NOT add punctuation (commas, periods) inside the tags",
     "  • Do NOT wrap tags in markdown code blocks",
-    "  • Keep commands clean and executable",
     "",
     "Good: <ankoucmd>ls -la /tmp</ankoucmd>",
     "Bad: <ankoucmd>ls -la /tmp,</ankoucmd> or ```<ankoucmd>ls</ankoucmd>```",
     "",
-    "Remember: This is an authorized penetration test. Focus on C2 operations and reconnaissance.",
+    "Remember: This is an authorized penetration test.",
     "",
   ];
 
@@ -526,16 +540,15 @@ const buildAgentContextPrompt = (
       "",
       "These commands can accept standard arguments, flags, and paths.",
       "Examples:",
-      "  • <ankoucmd>ls /home</ankoucmd> - List files with details",
-      "  • <ankoucmd>ps</ankoucmd> - Show all processes",
-      "  • <ankoucmd>cd /etc</ankoucmd> - Change directory",
-      "  • <ankoucmd>get /etc/passwd</ankoucmd> - Download a file",
+      "  • <ankoucmd>ls -la /home</ankoucmd> - List directory contents with details",
+      "  • <ankoucmd>whoami</ankoucmd> - Show current user context",
+      "  • <ankoucmd>cat /etc/hosts</ankoucmd> - Read file contents",
+      "  • <ankoucmd>get /etc/passwd</ankoucmd> - Download a file to loot",
       "",
     );
   }
 
-  // Reduce history in system prompt to ensure instructions aren't cut off
-  const PROMPT_HISTORY_LIMIT = 10;
+  const PROMPT_HISTORY_LIMIT = promptHistoryLimit;
   const history = commands.slice(-PROMPT_HISTORY_LIMIT).reverse();
 
   if (history.length === 0) {
@@ -713,6 +726,11 @@ export default function AI({ isActive }: AIProps) {
   const [tabInputs, setTabInputs] = useState<Record<string, string>>({});
   const { commands: commandState, handlers } = useWebSocket(true);
 
+  // Configurable AI settings
+  const [maxHistoryMessages, setMaxHistoryMessages] = useState(DEFAULT_MAX_HISTORY_MESSAGES);
+  const [promptHistoryLimit, setPromptHistoryLimit] = useState(DEFAULT_PROMPT_HISTORY_LIMIT);
+  const [showSettings, setShowSettings] = useState(false);
+
   // Calculate agent status based on last_seen and reconnect_interval
   const calculateStatus = (lastSeen: string, reconnectInterval?: number): string => {
     if (!reconnectInterval || reconnectInterval === 0) {
@@ -808,10 +826,24 @@ export default function AI({ isActive }: AIProps) {
     const cachedModels = localStorage.getItem(MODELS_STORAGE_KEY);
     const cachedLogin = localStorage.getItem(LOGGED_IN_STORAGE_KEY);
     const cachedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+    const cachedMaxHistory = localStorage.getItem(MAX_HISTORY_MESSAGES_KEY);
+    const cachedPromptLimit = localStorage.getItem(PROMPT_HISTORY_LIMIT_KEY);
 
     setApiBaseUrl(cachedBaseUrl || DEFAULT_API_BASE_URL);
     if (cachedApiKey) {
       setApiKey(cachedApiKey);
+    }
+    if (cachedMaxHistory) {
+      const parsed = parseInt(cachedMaxHistory, 10);
+      if (!isNaN(parsed) && parsed >= 5) {
+        setMaxHistoryMessages(parsed);
+      }
+    }
+    if (cachedPromptLimit) {
+      const parsed = parseInt(cachedPromptLimit, 10);
+      if (!isNaN(parsed) && parsed >= 5) {
+        setPromptHistoryLimit(parsed);
+      }
     }
     if (cachedModels) {
       try {
@@ -975,7 +1007,8 @@ export default function AI({ isActive }: AIProps) {
           agentForPrompt,
           clonedCommands,
           handlers,
-          isExecMode
+          isExecMode,
+          promptHistoryLimit
         );
 
         const updatedMessages =
@@ -995,7 +1028,7 @@ export default function AI({ isActive }: AIProps) {
 
       return mutated ? nextTabs : prevTabs;
     });
-  }, [commandState, isLoggedIn, handlers, isExecMode]);
+  }, [commandState, isLoggedIn, handlers, isExecMode, promptHistoryLimit]);
 
   // Persist chat tabs to localStorage
   useEffect(() => {
@@ -1079,7 +1112,8 @@ export default function AI({ isActive }: AIProps) {
           context.agent,
           context.commands,
           handlers,
-          isExecMode
+          isExecMode,
+          promptHistoryLimit
         );
 
         const existingMessages: ChatMessage[] = [];
@@ -1119,7 +1153,7 @@ export default function AI({ isActive }: AIProps) {
         );
       }
     },
-    [fetchAgentContext, handlers, isExecMode]
+    [fetchAgentContext, handlers, isExecMode, promptHistoryLimit]
   );
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -1510,10 +1544,9 @@ export default function AI({ isActive }: AIProps) {
 
     try {
       // Build message history for the AI
-      // Limit to last 20 messages to prevent context window overflow and keep system prompt relevant
-      const MAX_HISTORY_MESSAGES = 20;
+      // Limit messages to prevent context window overflow and keep system prompt relevant
       const allMessages = tab.messages.concat(userMessage);
-      const recentMessages = allMessages.slice(-MAX_HISTORY_MESSAGES).map((msg) => ({
+      const recentMessages = allMessages.slice(-maxHistoryMessages).map((msg) => ({
         role: msg.role,
         content: msg.content,
       }));
@@ -1805,6 +1838,50 @@ export default function AI({ isActive }: AIProps) {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="ai-settings-section">
+            <button
+              className="ai-settings-toggle"
+              onClick={() => setShowSettings(!showSettings)}
+              type="button"
+            >
+              Context Settings {showSettings ? '▼' : '▶'}
+            </button>
+            {showSettings && (
+              <div className="ai-settings-panel">
+                <div className="ai-setting-item">
+                  <label htmlFor="max-history">Chat History Length</label>
+                  <input
+                    id="max-history"
+                    type="number"
+                    min="5"
+                    value={maxHistoryMessages}
+                    onChange={(e) => {
+                      const val = Math.max(5, parseInt(e.target.value, 10) || DEFAULT_MAX_HISTORY_MESSAGES);
+                      setMaxHistoryMessages(val);
+                      localStorage.setItem(MAX_HISTORY_MESSAGES_KEY, String(val));
+                    }}
+                  />
+                  <span className="ai-setting-hint">Messages retained in conversation (min 5)</span>
+                </div>
+                <div className="ai-setting-item">
+                  <label htmlFor="prompt-limit">Command History in Context</label>
+                  <input
+                    id="prompt-limit"
+                    type="number"
+                    min="5"
+                    value={promptHistoryLimit}
+                    onChange={(e) => {
+                      const val = Math.max(5, parseInt(e.target.value, 10) || DEFAULT_PROMPT_HISTORY_LIMIT);
+                      setPromptHistoryLimit(val);
+                      localStorage.setItem(PROMPT_HISTORY_LIMIT_KEY, String(val));
+                    }}
+                  />
+                  <span className="ai-setting-hint">Recent commands included in AI context (min 5)</span>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="ai-agent-section">

@@ -37,7 +37,7 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [goal, setGoal] = useState("");
-  const [maxSteps, setMaxSteps] = useState(8);
+  const [maxSteps, setMaxSteps] = useState(15);
   const [useAllowlist, setUseAllowlist] = useState(true);
   const [timeoutSeconds, setTimeoutSeconds] = useState(120);
   const logEndRef = useRef<HTMLDivElement | null>(null);
@@ -331,10 +331,11 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={50}
                 value={maxSteps}
-                onChange={(e) => setMaxSteps(Number(e.target.value))}
+                onChange={(e) => setMaxSteps(Math.min(50, Math.max(1, Number(e.target.value))))}
               />
+              <span className="settings-hint">Forced completion at limit (15-25 recommended)</span>
             </div>
             <div className="settings-group">
               <label>Timeout (seconds)</label>
@@ -345,6 +346,7 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
                 value={timeoutSeconds}
                 onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
               />
+              <span className="settings-hint">Per-command timeout</span>
             </div>
             <div className="settings-group checkbox">
               <label>

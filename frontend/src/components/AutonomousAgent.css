@@ -239,6 +239,13 @@
   margin: 0;
 }
 
+.settings-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  margin-top: 2px;
+}
+
 .action-row {
   display: flex;
   gap: 10px;
