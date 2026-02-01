@@ -116,16 +116,33 @@ interface PhaseProgress {
   blockers: string[];
 }
 
-const DEFAULT_MAX_STEPS = 25; // Phase 4: Increased from 8 to support phased triage
+const DEFAULT_MAX_STEPS = 15; // Balanced default for most tasks
 const DEFAULT_TIMEOUT_MS = 120000;
+
+// Wrap-up and completion enforcement constants
+const WRAP_UP_WARNING_THRESHOLD = 3;  // Warn when 3 steps remaining
+const FINAL_STEP_THRESHOLD = 1;       // Force completion on last step
+const NO_TOOL_CALL_RETRY_LIMIT = 2;   // Retry attempts if model stops without completing
 const TOKEN_CHAR_RATIO = 4; // Rough heuristic: 4 chars ~ 1 token
 const CONTEXT_TOKEN_BUDGET = 16000; // Assume 16k token context
 const CONTEXT_TOKEN_THRESHOLD = 12000; // Trigger summarization when estimated > this
 const CONTEXT_CHAR_THRESHOLD = CONTEXT_TOKEN_THRESHOLD * TOKEN_CHAR_RATIO;
 const SUMMARY_MAX_CHARS = 3200; // ~800 tokens
 const SUMMARY_INPUT_LIMIT_CHARS = 8000; // cap what we feed to the summarizer
-const SUMMARIZE_MIN_ACTIONS = 4; // minimum tool calls between summaries
+const SUMMARIZE_MIN_ACTIONS = 6; // minimum tool calls between summaries (increased from 4)
 const KEEP_RECENT_MESSAGES = 4; // keep last few raw steps verbatim
+
+// Output handling for context efficiency
+const OUTPUT_SUMMARIZE_THRESHOLD = 2500; // Summarize outputs longer than this
+const MAX_OUTPUT_FOR_DISPLAY = 50000; // Max chars shown in UI
+
+// Prompt for summarizing long command outputs
+const OUTPUT_SUMMARY_PROMPT = `Summarize this command output concisely for a penetration tester. Focus on:
+- Key findings (users, permissions, services, IPs, paths, credentials, vulnerabilities)
+- Errors or access denied messages
+- Anything actionable or notable
+
+Keep the summary under 400 words. Use bullet points. Preserve exact values (usernames, IPs, paths) - don't paraphrase them.`;
 
 // Phase 1: Loop detection constants
 const LOOP_WARN_THRESHOLD = 1; // Warn after 1 prior occurrence
@@ -712,9 +729,30 @@ const buildSystemPromptWithHistory = (
   basePrompt: string,
   executedCommands: ExecutedCommand[],
   criticalFindings: CriticalFinding[] = [],
-  phaseProgress: PhaseProgress[] = []
+  phaseProgress: PhaseProgress[] = [],
+  stepInfo?: { current: number; max: number }
 ): string => {
   const parts = [basePrompt];
+
+  // Add progress indicator
+  if (stepInfo) {
+    parts.push("");
+    parts.push("## Current Progress");
+    parts.push(`Step ${stepInfo.current + 1}/${stepInfo.max} | Commands executed: ${executedCommands.length} | Phases completed: ${phaseProgress.length}/6`);
+
+    // Add wrap-up warnings based on remaining steps
+    const remainingSteps = stepInfo.max - stepInfo.current;
+    if (remainingSteps <= FINAL_STEP_THRESHOLD) {
+      parts.push("");
+      parts.push("## FINAL STEP");
+      parts.push("This is your LAST step. You MUST call complete_task NOW with your findings summary.");
+      parts.push("Do not run any more commands - summarize what you have found.");
+    } else if (remainingSteps <= WRAP_UP_WARNING_THRESHOLD) {
+      parts.push("");
+      parts.push("## WRAP-UP WARNING");
+      parts.push(`You have ${remainingSteps} step(s) remaining. Begin summarizing your findings and prepare to call complete_task.`);
+    }
+  }
 
   if (executedCommands.length > 0) {
     parts.push("");
@@ -797,10 +835,11 @@ const buildSystemPromptWithHistory = (
 
     for (const phase of phaseProgress) {
       parts.push(`✓ Phase ${phase.phaseNumber}: ${phase.phaseName}`);
-      if (phase.keyFindings.length > 0) {
+      const kf = Array.isArray(phase.keyFindings) ? phase.keyFindings : [];
+      if (kf.length > 0) {
         parts.push(
-          `  Findings: ${phase.keyFindings.slice(0, 3).join(", ")}${
-            phase.keyFindings.length > 3 ? "..." : ""
+          `  Findings: ${kf.slice(0, 3).join(", ")}${
+            kf.length > 3 ? "..." : ""
           }`
         );
       }
@@ -1011,6 +1050,78 @@ export function useAutonomyRunner() {
     [appendStep]
   );
 
+  const callSummaryModel = useCallback(
+    async (
+      apiBaseUrl: string,
+      apiKey: string | undefined,
+      model: string,
+      messages: ChatMessage[],
+      maxTokens: number = 400
+    ) => {
+      const baseUrl = normalizeBaseUrl(apiBaseUrl);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (apiKey && apiKey.trim()) {
+        headers.Authorization = `Bearer ${apiKey.trim()}`;
+      }
+
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model,
+          messages,
+          max_tokens: maxTokens,
+          temperature: 0.3,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`LLM summary request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    },
+    []
+  );
+
+  // Summarize long command output to reduce context usage
+  const summarizeCommandOutput = useCallback(
+    async (
+      apiBaseUrl: string,
+      apiKey: string | undefined,
+      model: string,
+      command: string,
+      output: string
+    ): Promise<string> => {
+      try {
+        const summaryMessages: ChatMessage[] = [
+          { role: "system", content: OUTPUT_SUMMARY_PROMPT },
+          { role: "user", content: `Command: ${command}\n\nOutput:\n${output}` },
+        ];
+
+        const response = await callSummaryModel(apiBaseUrl, apiKey, model, summaryMessages, 500);
+        const summary = response?.choices?.[0]?.message?.content?.trim();
+
+        if (summary) {
+          return `[SUMMARIZED - original was ${output.length} chars]\n\n${summary}`;
+        }
+        // Fallback to head+tail if summarization fails
+        const head = output.slice(0, 1500);
+        const tail = output.slice(-500);
+        return `[SUMMARIZATION FAILED - showing head+tail of ${output.length} chars]\n\n${head}\n\n...[truncated]...\n\n${tail}`;
+      } catch (err) {
+        // Fallback to head+tail truncation
+        const head = output.slice(0, 1500);
+        const tail = output.slice(-500);
+        return `[SUMMARIZATION FAILED - showing head+tail of ${output.length} chars]\n\n${head}\n\n...[truncated]...\n\n${tail}`;
+      }
+    },
+    [callSummaryModel]
+  );
+
   const executeRunCommand = useCallback(
     async (
       args: { command?: string },
@@ -1018,7 +1129,10 @@ export function useAutonomyRunner() {
       allowed: string[] | null,
       runId: string,
       timeoutMs: number,
-      modelName?: string
+      modelName?: string,
+      apiBaseUrl?: string,
+      apiKey?: string,
+      modelId?: string
     ): Promise<ToolResult> => {
       const commandText = (args.command || "").trim();
       if (!commandText) {
@@ -1131,10 +1245,24 @@ export function useAutonomyRunner() {
           }
         }
 
+        // Full output for UI display (may be large)
+        const fullOutput = (result.output || "").trim();
+        const displayOutput = fullOutput.length > MAX_OUTPUT_FOR_DISPLAY
+          ? fullOutput.slice(0, MAX_OUTPUT_FOR_DISPLAY) + `\n\n... (truncated ${fullOutput.length - MAX_OUTPUT_FOR_DISPLAY} chars)`
+          : fullOutput;
+
+        // Summarize long outputs for model context (preserves meaning, reduces tokens)
+        let contextOutput = fullOutput;
+        let outputWasSummarized = false;
+        if (fullOutput.length > OUTPUT_SUMMARIZE_THRESHOLD && apiBaseUrl && modelId) {
+          contextOutput = await summarizeCommandOutput(apiBaseUrl, apiKey, modelId, commandText, fullOutput);
+          outputWasSummarized = true;
+        }
+
         updateStep(stepId, (step) => ({
           ...step,
           commandId: result.id,
-          output: (result.output || "").trim(),
+          output: displayOutput,
           status: result.status === "completed" ? "completed" : "error",
         }));
 
@@ -1142,7 +1270,7 @@ export function useAutonomyRunner() {
         const baseMessage = `Command ${result.status}`;
         const message =
           loopCheck.action === "warn"
-            ? `${loopCheck.message}\n\nNew output: ${(result.output || "").trim()}`
+            ? `${loopCheck.message}\n\nNew output: ${contextOutput}`
             : baseMessage;
 
         return {
@@ -1151,7 +1279,9 @@ export function useAutonomyRunner() {
           data: {
             commandId: result.id,
             status: result.status,
-            output: result.output,
+            output: contextOutput,
+            outputSummarized: outputWasSummarized,
+            fullOutputLength: fullOutput.length,
           },
         };
       } catch (err) {
@@ -1176,7 +1306,7 @@ export function useAutonomyRunner() {
         };
       }
     },
-    [appendStep, sendCommand, updateStep, user?.username, waitForCommandResult, detectLoop]
+    [appendStep, sendCommand, updateStep, user?.username, waitForCommandResult, detectLoop, summarizeCommandOutput]
   );
 
   const executeGetRecentCommands = useCallback(
@@ -1224,14 +1354,17 @@ export function useAutonomyRunner() {
       allowed: string[] | null,
       runId: string,
       timeoutMs: number,
-      modelName?: string
+      modelName?: string,
+      apiBaseUrl?: string,
+      apiKey?: string,
+      modelId?: string
     ): Promise<ToolResult> => {
       if (stopRequestedRef.current) {
         return { status: "error", message: "Run stopped by operator." };
       }
 
       if (toolName === "run_command") {
-        return executeRunCommand(args, agent, allowed, runId, timeoutMs, modelName);
+        return executeRunCommand(args, agent, allowed, runId, timeoutMs, modelName, apiBaseUrl, apiKey, modelId);
       }
 
       if (toolName === "get_file") {
@@ -1240,7 +1373,7 @@ export function useAutonomyRunner() {
           return { status: "error", message: "Path is required for get_file." };
         }
         const command = path.startsWith("get ") ? path : `get ${path}`;
-        return executeRunCommand({ command }, agent, allowed, runId, timeoutMs, modelName);
+        return executeRunCommand({ command }, agent, allowed, runId, timeoutMs, modelName, apiBaseUrl, apiKey, modelId);
       }
 
       if (toolName === "get_recent_commands") {
@@ -1396,7 +1529,7 @@ export function useAutonomyRunner() {
           blockers,
           next_phase,
         } = args as {
-          current_phase: string;
+          current_phase?: string;
           phase_number?: number;
           os_detected?: string;
           key_findings?: string[];
@@ -1404,14 +1537,26 @@ export function useAutonomyRunner() {
           next_phase?: string;
         };
 
+        // Validate required field
+        if (!current_phase || typeof current_phase !== "string") {
+          return {
+            status: "error",
+            message: "report_progress requires 'current_phase' field (string describing the phase name)",
+          };
+        }
+
+        // Ensure arrays are actually arrays (model might send wrong types)
+        const safeKeyFindings = Array.isArray(key_findings) ? key_findings : [];
+        const safeBlockers = Array.isArray(blockers) ? blockers : [];
+
         // Store progress
         const progress: PhaseProgress = {
           phaseNumber: phase_number || phaseProgressRef.current.length + 1,
           phaseName: current_phase,
           completedAt: Date.now(),
           osDetected: os_detected as PhaseProgress["osDetected"],
-          keyFindings: key_findings || [],
-          blockers: blockers || [],
+          keyFindings: safeKeyFindings,
+          blockers: safeBlockers,
         };
 
         // Replace if same phase, otherwise append
@@ -1468,7 +1613,8 @@ export function useAutonomyRunner() {
       apiBaseUrl: string,
       apiKey: string | undefined,
       model: string,
-      messages: ChatMessage[]
+      messages: ChatMessage[],
+      forceToolChoice?: string  // Force a specific tool to be called
     ) => {
       const baseUrl = normalizeBaseUrl(apiBaseUrl);
       const headers: Record<string, string> = {
@@ -1477,6 +1623,11 @@ export function useAutonomyRunner() {
       if (apiKey && apiKey.trim()) {
         headers.Authorization = `Bearer ${apiKey.trim()}`;
       }
+
+      // Determine tool_choice - use "required" to force a tool call, or "auto"
+      // Note: Many LLM servers (Ollama, etc.) only support string values: "none", "auto", "required"
+      // They don't support object format like { type: "function", function: { name: "..." } }
+      const toolChoice = forceToolChoice ? "required" : "auto";
 
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
@@ -1485,49 +1636,12 @@ export function useAutonomyRunner() {
           model,
           messages,
           tools: buildToolList(),
-          tool_choice: "auto",
+          tool_choice: toolChoice,
         }),
       });
 
       if (!response.ok) {
         throw new Error(`LLM request failed with status ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data;
-    },
-    []
-  );
-
-  const callSummaryModel = useCallback(
-    async (
-      apiBaseUrl: string,
-      apiKey: string | undefined,
-      model: string,
-      messages: ChatMessage[],
-      maxTokens: number = 400
-    ) => {
-      const baseUrl = normalizeBaseUrl(apiBaseUrl);
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (apiKey && apiKey.trim()) {
-        headers.Authorization = `Bearer ${apiKey.trim()}`;
-      }
-
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature: 0.3,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`LLM summary request failed with status ${response.status}`);
       }
 
       const data = await response.json();
@@ -1667,6 +1781,31 @@ export function useAutonomyRunner() {
     [appendStep, callSummaryModel]
   );
 
+  // Generate auto-summary when forced to exit without explicit completion
+  const generateAutoSummary = useCallback((): { summary: string; findings: string[] } => {
+    const commands = executedCommandsRef.current || [];
+    const findings = criticalFindingsRef.current || [];
+    const phases = phaseProgressRef.current || [];
+
+    const successCount = commands.filter(c => c.status === "ok").length;
+    const errorCount = commands.filter(c => c.status === "error").length;
+
+    const summary = `Auto-generated summary: Executed ${commands.length} commands (${successCount} successful, ${errorCount} failed). ` +
+      `Completed ${phases.length}/6 phases. Found ${findings.length} critical findings.`;
+
+    // Defensive: ensure keyFindings is an array before using array methods
+    const phaseFindings = phases.flatMap(p => {
+      const kf = Array.isArray(p.keyFindings) ? p.keyFindings : [];
+      return kf.slice(0, 3);
+    });
+
+    const criticalFindingsList = findings.slice(0, 10).map(f => `${f.category}: ${f.value}`);
+
+    const findingsList = [...phaseFindings, ...criticalFindingsList];
+
+    return { summary, findings: findingsList };
+  }, []);
+
   const startRun = useCallback(
     async (options: AutonomyRunOptions) => {
       if (status === "running") {
@@ -1713,6 +1852,7 @@ export function useAutonomyRunner() {
         "You are an autonomous operator for a C2 agent.",
         "Plan minimal, precise commands to achieve the goal.",
         "Respect the agent's supported commands and avoid destructive actions unless explicitly required.",
+        "Never run interactive commands (sudo without -n, passwd, editors). Use non-interactive privilege checks like 'sudo -n -l' instead.",
         "",
         `Target agent: ${agent.name} (${agent.id}) • ${agent.os} • ${agent.ip}`,
         handler?.supportedCommands?.length
@@ -1735,6 +1875,7 @@ export function useAutonomyRunner() {
 
       let toolCallCount = 0;
       let lastSummaryToolCount = 0;
+      let noToolCallRetries = 0;
 
       try {
         for (let stepIndex = 0; stepIndex < maxSteps; stepIndex += 1) {
@@ -1744,18 +1885,23 @@ export function useAutonomyRunner() {
             return;
           }
 
-          // Phase 1 + Phase 4: Update system prompt with current command history, findings, and phase progress
+          // Determine if this is the final step - force complete_task if so
+          const isLastStep = stepIndex === maxSteps - 1;
+          const forceCompletion = isLastStep ? "complete_task" : undefined;
+
+          // Phase 1 + Phase 4: Update system prompt with current command history, findings, phase progress, and step info
           messages[0] = {
             role: "system",
             content: buildSystemPromptWithHistory(
               baseSystemPrompt,
               executedCommandsRef.current,
               criticalFindingsRef.current,
-              phaseProgressRef.current
+              phaseProgressRef.current,
+              { current: stepIndex, max: maxSteps }
             ),
           };
 
-          const data = await callModel(apiBaseUrl, apiKey, model.id, messages);
+          const data = await callModel(apiBaseUrl, apiKey, model.id, messages, forceCompletion);
 
           if (stopRequestedRef.current) {
             setStatus("stopped");
@@ -1806,41 +1952,92 @@ export function useAutonomyRunner() {
           messages.push(assistantMessage);
 
           if (toolCalls.length === 0) {
+            noToolCallRetries += 1;
+
+            if (noToolCallRetries <= NO_TOOL_CALL_RETRY_LIMIT) {
+              // Prompt model to complete
+              messages.push({
+                role: "user",
+                content: "You stopped without calling any tools. Please call complete_task to summarize your findings, or continue with another command if the task is not finished."
+              });
+
+              appendStep({
+                id: `retry-${Date.now()}`,
+                kind: "info",
+                title: `Prompting for completion (attempt ${noToolCallRetries}/${NO_TOOL_CALL_RETRY_LIMIT})`,
+                detail: "Model returned no tool calls. Requesting explicit completion.",
+                status: "running",
+                timestamp: Date.now(),
+              });
+
+              continue; // Retry the loop
+            }
+
+            // Max retries reached - generate auto-summary and exit
+            const { summary, findings } = generateAutoSummary();
+
             appendStep({
-              id: `info-${Date.now()}`,
-              kind: "info",
-              title: "Model returned no tool calls",
-              detail:
-                "The model stopped without calling complete_task. This may indicate it finished thinking or encountered an issue. Review the last thought for context.",
+              id: `auto-completion-${Date.now()}`,
+              kind: "completion",
+              title: "Task auto-completed (model stopped responding)",
+              detail: `## Status: PARTIAL (Auto-generated)\n\n**Summary:** ${summary}\n\n### Findings\n${findings.length > 0 ? findings.map(f => `- ${f}`).join('\n') : '- No specific findings recorded'}`,
               status: "completed",
               timestamp: Date.now(),
             });
+
             setStatus("completed");
             runIdRef.current = null;
             return;
           }
 
+          // Reset retry counter on successful tool call
+          noToolCallRetries = 0;
+
           for (const toolCall of toolCalls) {
+            // Defensive: ensure toolCall has required structure
+            if (!toolCall?.function?.name) {
+              console.warn("Malformed tool call received:", toolCall);
+              messages.push({
+                role: "tool",
+                tool_call_id: toolCall?.id || `unknown-${Date.now()}`,
+                content: JSON.stringify({ status: "error", message: "Malformed tool call - missing function name" }),
+              });
+              continue;
+            }
+
             const parsedArgs =
               toolCall.function?.arguments && toolCall.function.arguments.trim().length
                 ? (() => {
                     try {
                       return JSON.parse(toolCall.function.arguments);
-                    } catch {
+                    } catch (parseErr) {
+                      console.warn("Failed to parse tool arguments:", toolCall.function.arguments, parseErr);
                       return {};
                     }
                   })()
                 : {};
 
-            const toolResult = await runToolCall(
-              toolCall.function.name,
-              parsedArgs,
-              agent,
-              allowedCommands,
-              runId,
-              timeoutMs,
-              model.name || model.id
-            );
+            let toolResult: ToolResult;
+            try {
+              toolResult = await runToolCall(
+                toolCall.function.name,
+                parsedArgs,
+                agent,
+                allowedCommands,
+                runId,
+                timeoutMs,
+                model.name || model.id,
+                apiBaseUrl,
+                apiKey,
+                model.id
+              );
+            } catch (toolErr) {
+              console.error("Tool call execution error:", toolCall.function.name, toolErr);
+              toolResult = {
+                status: "error",
+                message: `Tool execution failed: ${toolErr instanceof Error ? toolErr.message : "Unknown error"}`,
+              };
+            }
 
             messages.push({
               role: "tool",
@@ -1890,13 +2087,14 @@ export function useAutonomyRunner() {
           }
         }
 
-        // Phase 2: Max steps reached without explicit completion
+        // Max steps reached without explicit completion - generate auto-summary
+        const { summary, findings } = generateAutoSummary();
+
         appendStep({
-          id: `info-${Date.now()}`,
-          kind: "info",
-          title: "Maximum steps reached without explicit completion",
-          detail:
-            "The agent reached the step limit without calling complete_task. Review the commands executed and consider increasing max steps or refining the goal.",
+          id: `auto-completion-${Date.now()}`,
+          kind: "completion",
+          title: "Task auto-completed (step limit reached)",
+          detail: `## Status: PARTIAL (Auto-generated)\n\n**Summary:** ${summary}\n\n### Findings\n${findings.length > 0 ? findings.map(f => `- ${f}`).join('\n') : '- No specific findings recorded'}\n\n---\n*The agent reached the step limit. Consider increasing max steps or refining the goal for more thorough results.*`,
           status: "completed",
           timestamp: Date.now(),
         });
@@ -1911,7 +2109,7 @@ export function useAutonomyRunner() {
         }
       }
     },
-    [appendStep, callModel, handlers, runToolCall, status, summarizeHistory]
+    [appendStep, callModel, generateAutoSummary, handlers, runToolCall, status, summarizeHistory]
   );
 
   const stopRun = useCallback(() => {
