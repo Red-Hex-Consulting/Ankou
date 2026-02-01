@@ -2,6 +2,7 @@
 
 ### Join our Discord for discussions, support, suggestions, and development input
 [![Join our Discord](https://img.shields.io/badge/Join_our_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/dkVC3NKsqp)
+[![Follow on X](https://img.shields.io/badge/Follow_on_X-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/RedHexCaps)
 
 # Ankou: Next-Generation Command & Control Framework
 
