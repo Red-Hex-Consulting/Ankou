@@ -738,19 +738,22 @@ const buildSystemPromptWithHistory = (
   if (stepInfo) {
     parts.push("");
     parts.push("## Current Progress");
-    parts.push(`Step ${stepInfo.current + 1}/${stepInfo.max} | Commands executed: ${executedCommands.length} | Phases completed: ${phaseProgress.length}/6`);
+    const maxDisplay = stepInfo.max === Infinity ? "∞" : stepInfo.max;
+    parts.push(`Step ${stepInfo.current + 1}/${maxDisplay} | Commands executed: ${executedCommands.length} | Phases completed: ${phaseProgress.length}/6`);
 
-    // Add wrap-up warnings based on remaining steps
-    const remainingSteps = stepInfo.max - stepInfo.current;
-    if (remainingSteps <= FINAL_STEP_THRESHOLD) {
-      parts.push("");
-      parts.push("## FINAL STEP");
-      parts.push("This is your LAST step. You MUST call complete_task NOW with your findings summary.");
-      parts.push("Do not run any more commands - summarize what you have found.");
-    } else if (remainingSteps <= WRAP_UP_WARNING_THRESHOLD) {
-      parts.push("");
-      parts.push("## WRAP-UP WARNING");
-      parts.push(`You have ${remainingSteps} step(s) remaining. Begin summarizing your findings and prepare to call complete_task.`);
+    // Add wrap-up warnings based on remaining steps (only if max is finite)
+    if (stepInfo.max !== Infinity) {
+      const remainingSteps = stepInfo.max - stepInfo.current;
+      if (remainingSteps <= FINAL_STEP_THRESHOLD) {
+        parts.push("");
+        parts.push("## FINAL STEP");
+        parts.push("This is your LAST step. You MUST call complete_task NOW with your findings summary.");
+        parts.push("Do not run any more commands - summarize what you have found.");
+      } else if (remainingSteps <= WRAP_UP_WARNING_THRESHOLD) {
+        parts.push("");
+        parts.push("## WRAP-UP WARNING");
+        parts.push(`You have ${remainingSteps} step(s) remaining. Begin summarizing your findings and prepare to call complete_task.`);
+      }
     }
   }
 
@@ -926,7 +929,7 @@ export function useAutonomyRunner() {
             }
           }
 
-          if (Date.now() - start > timeoutMs) {
+          if (timeoutMs !== Infinity && Date.now() - start > timeoutMs) {
             clearInterval(interval);
             reject(new Error("Command timed out while waiting for output."));
           }
