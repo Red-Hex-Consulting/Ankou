@@ -35,7 +35,7 @@ GOAL: Map users, groups, and your current access level
 Linux/macOS commands:
 - cat /etc/passwd | grep -v nologin | grep -v false
 - groups
-- sudo -l 2>/dev/null || echo "No sudo access"
+- sudo -n -l 2>/dev/null || echo "No sudo access (non-interactive)"
 
 Windows commands:
 - net user
@@ -100,7 +100,7 @@ You MUST call complete_task with:
 ## COMMAND TIPS
 
 ### Privilege Checks
-- Linux: Check if uid=0 or if sudo -l returns anything
+- Linux: Check if uid=0 or if sudo -n -l returns anything (non-interactive)
 - Windows: Check if "BUILTIN\\Administrators" appears in whoami /groups
 
 ### If Commands Fail
