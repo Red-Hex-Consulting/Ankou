@@ -2,6 +2,7 @@
 
 ### Join our Discord for discussions, support, suggestions, and development input
 [![Join our Discord](https://img.shields.io/badge/Join_our_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/dkVC3NKsqp)
+[![Follow on X](https://img.shields.io/badge/Follow_on_X-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/RedHexCaps)
 
 # Ankou: Next-Generation Command & Control Framework
 
@@ -64,8 +65,8 @@ Mapped together they form a layered C2 architecture that keeps the real server h
 
 | Agent      | Platform       | Language           | Protocol / Transport        |
 |------------|-------------------|--------------------|-----------------------------|
-| **geist**  | Windows    | Rust               | HTTP3/QUIC                  |
-| **phantasm** | Windows  | Go                 | HTTPS                       |
+| **geist**  | Windows    | Rust and Go               | HTTP3/QUIC                  |
+| **phantasm** | Windows  | Rust and Go                 | HTTPS                       |
 | **anomaly**  | Windows           | Node.js (inject in C) | HTTPS   |
 | **shade**  | Linux           | Go | SSH   |
 | **wraith** | Linux | Rust         | HTTP3/QUIC             |

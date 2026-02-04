@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaLightbulb, FaCog } from "react-icons/fa";
+import { FaPlay, FaStop, FaRobot, FaExclamationTriangle, FaCog } from "react-icons/fa";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAutonomyRunner } from "../hooks/useAutonomyRunner";
 import {
@@ -9,7 +9,7 @@ import {
   MODELS_STORAGE_KEY,
   SELECTED_MODEL_STORAGE_KEY,
 } from "../utils/aiSettings";
-import { RED_TEAM_TRIAGE_PROMPT } from "../utils/prompts";
+import RecipeManager from "./RecipeManager";
 import "./AutonomousAgent.css";
 
 interface Model {
@@ -37,9 +37,9 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [goal, setGoal] = useState("");
-  const [maxSteps, setMaxSteps] = useState(8);
+  const [maxSteps, setMaxSteps] = useState<number | null>(15);
   const [useAllowlist, setUseAllowlist] = useState(true);
-  const [timeoutSeconds, setTimeoutSeconds] = useState(120);
+  const [timeoutSeconds, setTimeoutSeconds] = useState<number | null>(120);
   const logEndRef = useRef<HTMLDivElement | null>(null);
 
   // Load cached settings on mount
@@ -158,9 +158,9 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
       model: selectedModel,
       apiBaseUrl,
       apiKey,
-      maxSteps,
+      maxSteps: maxSteps ?? Infinity,
       useAllowlist,
-      timeoutMs: Math.max(timeoutSeconds * 1000, 5000),
+      timeoutMs: timeoutSeconds !== null ? Math.max(timeoutSeconds * 1000, 5000) : Infinity,
     });
   };
 
@@ -308,51 +308,53 @@ export default function AutonomousAgent({ isActive }: AutonomousAgentProps) {
             />
           </div>
 
-          <div className="template-card">
-            <div className="template-info">
-              <FaLightbulb className="template-icon" />
-              <div>
-                <div className="template-title">Red Team Triage Playbook</div>
-                <div className="template-subtitle">Load a pre-built reconnaissance and system assessment prompt.</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="secondary-btn"
-              onClick={() => setGoal(RED_TEAM_TRIAGE_PROMPT)}
-            >
-              Use This Prompt
-            </button>
-          </div>
+          <RecipeManager
+            onSelectRecipe={(prompt) => setGoal(prompt)}
+            currentPrompt={goal}
+          />
 
           <div className="settings-row">
             <div className="settings-group">
               <label>Max Steps</label>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                value={maxSteps}
-                onChange={(e) => setMaxSteps(Number(e.target.value))}
-              />
+              <select
+                className="styled-select"
+                value={maxSteps === null ? "none" : String(maxSteps)}
+                onChange={(e) => setMaxSteps(e.target.value === "none" ? null : Number(e.target.value))}
+              >
+                <option value="none">None (Unlimited)</option>
+                <option value="10">10 steps</option>
+                <option value="15">15 steps</option>
+                <option value="20">20 steps</option>
+                <option value="25">25 steps</option>
+                <option value="30">30 steps</option>
+                <option value="50">50 steps</option>
+              </select>
+              <span className="settings-hint">Forced completion at limit (15-25 recommended)</span>
             </div>
             <div className="settings-group">
-              <label>Timeout (seconds)</label>
-              <input
-                type="number"
-                min={5}
-                max={600}
-                value={timeoutSeconds}
-                onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
-              />
+              <label>Timeout</label>
+              <select
+                className="styled-select"
+                value={timeoutSeconds === null ? "none" : String(timeoutSeconds)}
+                onChange={(e) => setTimeoutSeconds(e.target.value === "none" ? null : Number(e.target.value))}
+              >
+                <option value="none">None (No limit)</option>
+                <option value="30">30 seconds</option>
+                <option value="60">1 minute</option>
+                <option value="120">2 minutes</option>
+                <option value="300">5 minutes</option>
+                <option value="600">10 minutes</option>
+              </select>
+              <span className="settings-hint">Per-command timeout</span>
             </div>
             <div className="settings-group checkbox">
-              <label>
+              <label className="checkbox-label">
                 <input
                   type="checkbox"
                   checked={useAllowlist}
                   onChange={(e) => setUseAllowlist(e.target.checked)}
                 />
+                <span className="checkbox-custom"></span>
                 Enforce handler allowlist
               </label>
             </div>
