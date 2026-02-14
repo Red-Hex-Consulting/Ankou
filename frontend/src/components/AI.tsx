@@ -100,6 +100,38 @@ const MAX_COMMAND_HISTORY = 50;
 const COMMAND_TAG_REGEX = /<\s*(?:cmdankou|ankoucmd)\s*>([\s\S]*?)<\/\s*(?:cmdankou|ankoucmd)\s*>/gi;
 const THINK_TAG_REGEX = /<think>([\s\S]*?)<\/think>/gi;
 
+/**
+ * Strips characters that cause JSON serialisation failures when embedding
+ * raw agent command output into an API request body.  This covers:
+ *   - ANSI / VT100 escape sequences  (e.g. \x1b[31m)
+ *   - Other C0/C1 control characters except newline and tab
+ *   - Lone UTF-16 surrogates (unpaired \uD800-\uDFFF)
+ * The function is intentionally conservative: printable Unicode is kept.
+ */
+const sanitizeForJson = (text: string): string => {
+  if (!text || typeof text !== "string") return "";
+
+  let result = text
+    // ANSI / VT100 escape sequences
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b[@-Z\\-_]/g, "")
+    // Other control characters (keep \t and \n)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+    // Lone UTF-16 surrogates that break JSON.stringify
+    .replace(/[\uD800-\uDFFF]/g, "");
+
+  // Final safety check: if JSON.stringify still throws, fall back to ASCII
+  try {
+    JSON.stringify(result);
+  } catch {
+    result = result.replace(/[^\x09\x0a\x20-\x7e]/g, "");
+  }
+
+  return result;
+};
+
 interface MessageSegment {
   type: "markdown" | "command" | "thought";
   value: string;
@@ -572,9 +604,10 @@ const buildAgentContextPrompt = (
       lines.push(`    Status: ${statusEmoji} ${command.status}`);
 
       if (command.output && command.output.trim().length > 0) {
-        const outputPreview = command.output.length > 500
-          ? command.output.substring(0, 500) + '... (truncated)'
-          : command.output;
+        const sanitizedOutput = sanitizeForJson(command.output);
+        const outputPreview = sanitizedOutput.length > 500
+          ? sanitizedOutput.substring(0, 500) + '... (truncated)'
+          : sanitizedOutput;
         lines.push(`    Output:\n${outputPreview}`);
       } else {
         lines.push(`    Output: (no output)`);
