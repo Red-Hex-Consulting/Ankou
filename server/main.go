@@ -55,6 +55,7 @@ type Listener struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Type        string    `json:"type"`
+	Port        int       `json:"port,omitempty"`
 	Endpoint    string    `json:"endpoint"`
 	Status      string    `json:"status"`
 	Description string    `json:"description"`
@@ -451,6 +452,122 @@ func hmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		next(w, r)
+	}
+}
+
+// agentHmacMiddleware validates agent HMAC directly for agent-specific listeners (no relay hop)
+func agentHmacMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("[Security] Failed to read body: %v", err)
+			http.Error(w, "Failed to read request", http.StatusBadRequest)
+			return
+		}
+
+		var wrapper struct {
+			Data      json.RawMessage `json:"data"`
+			Timestamp string          `json:"timestamp"`
+			Signature string          `json:"signature"`
+		}
+		if err := json.Unmarshal(body, &wrapper); err != nil {
+			log.Printf("[Security] Failed to parse agent wrapper: %v", err)
+			http.Error(w, "Invalid request format", http.StatusBadRequest)
+			return
+		}
+
+		if wrapper.Timestamp == "" || wrapper.Signature == "" || len(wrapper.Data) == 0 {
+			log.Printf("[Security] Missing agent HMAC fields from %s", r.RemoteAddr)
+			http.Error(w, "Missing authentication", http.StatusUnauthorized)
+			return
+		}
+
+		// Validate timestamp
+		ts, err := strconv.ParseInt(wrapper.Timestamp, 10, 64)
+		if err != nil {
+			log.Printf("[Security] Invalid agent timestamp: %v", err)
+			http.Error(w, "Invalid timestamp", http.StatusUnauthorized)
+			return
+		}
+		now := time.Now().Unix()
+		if now-ts > 300 || ts-now > 300 {
+			log.Printf("[Security] Agent timestamp out of window (diff: %d seconds)", now-ts)
+			http.Error(w, "Timestamp expired", http.StatusUnauthorized)
+			return
+		}
+
+		// Validate agent HMAC: POST + endpoint + timestamp + data
+		message := fmt.Sprintf("POST%s%s%s", r.URL.Path, wrapper.Timestamp, string(wrapper.Data))
+		expectedSig := generateHMAC(message, hmacKey)
+		if !hmac.Equal([]byte(wrapper.Signature), []byte(expectedSig)) {
+			log.Printf("[Security] Agent HMAC validation failed from %s", r.RemoteAddr)
+			http.Error(w, "Invalid HMAC signature", http.StatusUnauthorized)
+			return
+		}
+
+		// Replace body with just the data portion (unwrap)
+		r.Body = io.NopCloser(bytes.NewReader(wrapper.Data))
+		next(w, r)
+	}
+}
+
+// handleDirectAgentRequest handles requests from agent-specific listeners (no relay)
+func handleDirectAgentRequest(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Failed to read request body: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	r.Body = io.NopCloser(strings.NewReader(string(body)))
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		log.Printf("Failed to parse JSON payload: %v", err)
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	// Determine action by payload structure (same logic as handleAgentRequest)
+	var action string
+	if _, hasUUID := payload["uuid"]; hasUUID {
+		action = "register"
+	} else if _, hasSessionID := payload["sessionId"]; hasSessionID {
+		if _, hasChunkIndex := payload["chunkIndex"]; hasChunkIndex {
+			action = "chunk-upload"
+		} else if _, hasComplete := payload["complete"]; hasComplete {
+			action = "chunk-complete"
+		} else {
+			action = "chunk-init"
+		}
+	} else if _, hasFilename := payload["filename"]; hasFilename {
+		action = "chunk-init"
+	} else if _, hasOutput := payload["output"]; hasOutput {
+		action = "command-response"
+	} else if _, hasAgentID := payload["agentId"]; hasAgentID {
+		action = "poll"
+	} else {
+		log.Printf("Unable to determine request type from payload: %v", payload)
+		http.Error(w, "Unable to determine request type", http.StatusBadRequest)
+		return
+	}
+
+	switch action {
+	case "register":
+		registerAgent(w, r)
+	case "poll":
+		handlePollCommands(w, r)
+	case "command-response":
+		handleCommandResponse(w, r)
+	case "chunk-init":
+		handleChunkInit(w, r)
+	case "chunk-upload":
+		handleChunkUpload(w, r)
+	case "chunk-complete":
+		handleChunkComplete(w, r)
+	default:
+		http.Error(w, "Unknown request type", http.StatusBadRequest)
 	}
 }
 
