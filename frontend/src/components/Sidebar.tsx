@@ -14,18 +14,38 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-const sidebarItems = [
-  { id: "agents", label: "Agents", icon: FaGhost },
-  { id: "terminal", label: "Global Commands", icon: GiOctopus },
-  { id: "loot", label: "Loot", icon: FaDatabase },
-  { id: "ai", label: "AI Chat", icon: IoChatboxEllipsesSharp },
-  { id: "autonomy", label: "Autonomous Agent", icon: FaRobot },
-  { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
-  { id: "listeners", label: "Listeners", icon: LuRadioTower },
-  { id: "handlers", label: "Handlers", icon: FaProjectDiagram },
-  { id: "logs", label: "Logs", icon: FaFileAlt },
-  { id: "operators", label: "Operators", icon: FaUserSecret },
-  { id: "scripts", label: "Automation", icon: FaCog },
+const sidebarSections = [
+  {
+    label: "OPERATIONS",
+    items: [
+      { id: "agents", label: "Agents", icon: FaGhost },
+      { id: "terminal", label: "Global Commands", icon: GiOctopus },
+      { id: "loot", label: "Loot", icon: FaDatabase },
+    ],
+  },
+  {
+    label: "TOOLS",
+    items: [
+      { id: "ai", label: "AI Chat", icon: IoChatboxEllipsesSharp },
+      { id: "autonomy", label: "Autonomous Agent", icon: FaRobot },
+      { id: "poly-engine", label: "Poly Engine", icon: GiMagicGate },
+    ],
+  },
+  {
+    label: "INFRASTRUCTURE",
+    items: [
+      { id: "listeners", label: "Listeners", icon: LuRadioTower },
+      { id: "handlers", label: "Handlers", icon: FaProjectDiagram },
+      { id: "logs", label: "Logs", icon: FaFileAlt },
+    ],
+  },
+  {
+    label: "ADMIN",
+    items: [
+      { id: "operators", label: "Operators", icon: FaUserSecret },
+      { id: "scripts", label: "Automation", icon: FaCog },
+    ],
+  },
 ];
 
 export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollapsed, onToggleCollapse, onLogout }: SidebarProps) {
@@ -43,73 +63,26 @@ export default function Sidebar({ activeTab, setActiveTab, isConnected, isCollap
       </div>
       
       <nav className="sidebar-nav">
-        {sidebarItems.slice(0, 3).map((item) => {
-          const IconComponent = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <IconComponent className="sidebar-icon" />
-              {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
-            </button>
-          );
-        })}
-        
-        <div className="sidebar-separator"></div>
+        {sidebarSections.map((section) => (
+          <div key={section.label}>
+            <div className="sidebar-section-header">{section.label}</div>
+            {section.items.map((item) => {
+              const IconComponent = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(item.id)}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <IconComponent className="sidebar-icon" />
+                  {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
 
-        {sidebarItems.slice(3, 6).map((item) => {
-          const IconComponent = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <IconComponent className="sidebar-icon" />
-              {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
-            </button>
-          );
-        })}
-        
-        <div className="sidebar-separator"></div>
-
-        {sidebarItems.slice(6, 9).map((item) => {
-          const IconComponent = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <IconComponent className="sidebar-icon" />
-              {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
-            </button>
-          );
-        })}
-        
-        <div className="sidebar-separator"></div>
-
-        {sidebarItems.slice(9).map((item) => {
-          const IconComponent = item.icon;
-          return (
-            <button
-              key={item.id}
-              className={`sidebar-item ${activeTab === item.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(item.id)}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <IconComponent className="sidebar-icon" />
-              {!isCollapsed && <span className="sidebar-label">{item.label}</span>}
-            </button>
-          );
-        })}
-        
-        {/* Logout Button */}
         <button
           className="sidebar-item logout-btn"
           onClick={onLogout}
