@@ -111,6 +111,9 @@ func createSchema() (graphql.Schema, error) {
 			"type": &graphql.Field{
 				Type: graphql.String,
 			},
+			"port": &graphql.Field{
+				Type: graphql.Int,
+			},
 			"endpoint": &graphql.Field{
 				Type: graphql.String,
 			},
@@ -426,6 +429,12 @@ func createSchema() (graphql.Schema, error) {
 					"name": &graphql.ArgumentConfig{
 						Type: graphql.NewNonNull(graphql.String),
 					},
+					"type": &graphql.ArgumentConfig{
+						Type: graphql.String,
+					},
+					"port": &graphql.ArgumentConfig{
+						Type: graphql.Int,
+					},
 					"endpoint": &graphql.ArgumentConfig{
 						Type: graphql.String,
 					},
@@ -435,10 +444,12 @@ func createSchema() (graphql.Schema, error) {
 				},
 				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 					name, _ := p.Args["name"].(string)
+					listenerType, _ := p.Args["type"].(string)
+					port, _ := p.Args["port"].(int)
 					endpoint, _ := p.Args["endpoint"].(string)
 					description, _ := p.Args["description"].(string)
 
-				listener, err := createListener(name, endpoint, description)
+				listener, err := createListener(name, listenerType, port, endpoint, description)
 					if err != nil {
 						return nil, err
 					}

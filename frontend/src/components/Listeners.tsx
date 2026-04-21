@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { FaPlay, FaStop, FaPlus, FaTrash, FaGlobe, FaLock, FaNetworkWired, FaWifi, FaServer } from 'react-icons/fa';
+import { FaPlay, FaStop, FaPlus, FaTrash, FaGlobe, FaLock, FaNetworkWired, FaWifi, FaServer, FaGhost } from 'react-icons/fa';
 import { LuRadioTower } from 'react-icons/lu';
 import { useWebSocket, Listener as ListenerType } from '../hooks/useWebSocket';
 import DeleteListenerModal from './DeleteListenerModal';
@@ -7,12 +7,25 @@ import './Listeners.css';
 
 type ListenerForm = {
   name: string;
+  type: string;
+  port: string;
   endpoint: string;
   description: string;
 };
 
+const LISTENER_TYPES = [
+  { value: 'ghost_relay', label: 'Ghost Relay' },
+  { value: 'phantasm', label: 'Phantasm' },
+  { value: 'shade', label: 'Shade' },
+  { value: 'geist', label: 'Geist' },
+  { value: 'anomaly', label: 'Anomaly' },
+  { value: 'wraith', label: 'Wraith' },
+];
+
 const DEFAULT_FORM: ListenerForm = {
   name: '',
+  type: 'ghost_relay',
+  port: '',
   endpoint: '/',
   description: ''
 };
@@ -28,6 +41,7 @@ const LISTENER_FIELDS = `{
   id
   name
   type
+  port
   endpoint
   status
   description
@@ -87,6 +101,8 @@ const Listeners: React.FC = () => {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
+      case 'ghost_relay':
+        return <FaGhost />;
       case 'https':
         return <FaLock />;
       case 'http':
@@ -126,10 +142,12 @@ const Listeners: React.FC = () => {
 
     setSubmitting(true);
     try {
+      const portArg = form.type !== 'ghost_relay' && form.port ? `, port: ${parseInt(form.port, 10)}` : '';
       const mutation = `
         mutation {
           createListener(
             name: "${escapeGraphQLString(form.name)}",
+            type: "${escapeGraphQLString(form.type)}"${portArg},
             endpoint: "${escapeGraphQLString(endpoint)}",
             description: "${escapeGraphQLString(form.description)}"
           ) ${LISTENER_FIELDS}
@@ -284,10 +302,25 @@ const Listeners: React.FC = () => {
               value={form.name}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
             />
-            <select value="https" disabled>
-              <option value="https">HTTPS</option>
+            <select
+              value={form.type}
+              onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value }))}
+            >
+              {LISTENER_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
             </select>
           </div>
+          {form.type !== 'ghost_relay' && (
+            <div className="listeners-form-row">
+              <input
+                type="number"
+                placeholder="Port *"
+                value={form.port}
+                onChange={(e) => setForm((prev) => ({ ...prev, port: e.target.value }))}
+              />
+            </div>
+          )}
           <div className="listeners-form-row">
             <input
               type="text"
@@ -367,7 +400,7 @@ const Listeners: React.FC = () => {
                   </div>
                   <div className="listener-address">
                     <div>
-                      {listener.endpoint}
+                      {listener.port ? `:${listener.port}` : ''}{listener.endpoint}
                     </div>
                   </div>
                   <div className="listener-col-status">

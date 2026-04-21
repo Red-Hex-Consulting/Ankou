@@ -34,7 +34,7 @@ export function useTerminal() {
     } else {
       const newTab = {
         id: `tab-${Date.now()}`,
-        title: agent.name,
+        title: agent.id.length > 8 ? agent.id.slice(0, 8) : agent.id,
         agent,
         history: []
       };

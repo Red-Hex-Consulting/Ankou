@@ -106,8 +106,30 @@ func getAllListeners() ([]*Listener, error) {
 	return result, nil
 }
 
+// validListenerTypes defines the allowed listener types
+var validListenerTypes = map[string]bool{
+	"ghost_relay": true,
+	"phantasm":    true,
+	"shade":       true,
+	"geist":       true,
+	"anomaly":     true,
+	"wraith":      true,
+}
+
 // createListener creates a new listener
-func createListener(name, endpoint, description string) (*Listener, error) {
+func createListener(name, listenerType string, port int, endpoint, description string) (*Listener, error) {
+	if listenerType == "" {
+		listenerType = "ghost_relay"
+	}
+	if !validListenerTypes[listenerType] {
+		return nil, fmt.Errorf("invalid listener type: %s", listenerType)
+	}
+
+	// Agent-specific listeners require a port
+	if listenerType != "ghost_relay" && port <= 0 {
+		return nil, fmt.Errorf("port is required for %s listeners", listenerType)
+	}
+
 	// Generate unique ID
 	listenerID := fmt.Sprintf("listener_%d", time.Now().Unix())
 
@@ -119,7 +141,8 @@ func createListener(name, endpoint, description string) (*Listener, error) {
 	listener := &Listener{
 		ID:          listenerID,
 		Name:        name,
-		Type:        "https", // Only support HTTPS for now
+		Type:        listenerType,
+		Port:        port,
 		Endpoint:    normalizedEndpoint,
 		Status:      "stopped",
 		Description: description,
@@ -149,9 +172,15 @@ func startListener(id string) (*Listener, error) {
 		return listener, nil // Already running
 	}
 
-	// Mark listener as running (no separate server needed - handled by relay API)
+	// For agent-specific listeners, start an actual HTTPS server
+	if listener.Type != "ghost_relay" {
+		if err := startAgentListenerServer(listener); err != nil {
+			return nil, fmt.Errorf("failed to start listener server: %v", err)
+		}
+	}
+
 	listener.Status = "running"
-	log.Printf("Activated listener endpoint: %s", listener.Endpoint)
+	log.Printf("Activated listener: %s (type: %s, port: %d, endpoint: %s)", listener.Name, listener.Type, listener.Port, listener.Endpoint)
 
 	// Save updated status
 	if err := saveListenerConfig(listener); err != nil {
@@ -172,9 +201,13 @@ func stopListener(id string) (*Listener, error) {
 		return listener, nil // Already stopped
 	}
 
-	// Mark listener as stopped (no separate server to stop - handled by relay API)
+	// For agent-specific listeners, stop the actual server
+	if listener.Type != "ghost_relay" {
+		stopAgentListenerServer(listener.ID)
+	}
+
 	listener.Status = "stopped"
-	log.Printf("Deactivated listener endpoint: %s", listener.Endpoint)
+	log.Printf("Deactivated listener: %s (type: %s)", listener.Name, listener.Type)
 
 	// Save updated status
 	if err := saveListenerConfig(listener); err != nil {
@@ -193,8 +226,11 @@ func deleteListener(id string) (bool, error) {
 
 	// Stop the listener if it's running
 	if listener.Status == "running" {
+		if listener.Type != "ghost_relay" {
+			stopAgentListenerServer(listener.ID)
+		}
 		listener.Status = "stopped"
-		log.Printf("Deactivated listener endpoint: %s", listener.Endpoint)
+		log.Printf("Deactivated listener: %s (type: %s)", listener.Name, listener.Type)
 	}
 
 	// Remove from memory
@@ -208,12 +244,7 @@ func deleteListener(id string) (bool, error) {
 	return true, nil
 }
 
-// Listener management (configuration-based, no separate servers)
-// All traffic flows through the relay API defined in server_config.json
-
-// isListenerActive checks if a listener is running for the given endpoint
-// Listeners are now configuration-based only - they don't create separate servers
-// This simply checks if the listener exists and has status "running"
+// isListenerActive checks if a ghost_relay listener is running for the given endpoint
 func isListenerActive(endpoint string) bool {
 	listenersMutex.RLock()
 	defer listenersMutex.RUnlock()
@@ -251,4 +282,18 @@ func normalizeEndpoint(endpoint string) (string, error) {
 	}
 
 	return cleaned, nil
+}
+
+// listenerProtocol returns the protocol for a given listener type
+func listenerProtocol(listenerType string) string {
+	switch listenerType {
+	case "phantasm", "anomaly":
+		return "https"
+	case "geist", "wraith":
+		return "quic"
+	case "shade":
+		return "ssh"
+	default:
+		return ""
+	}
 }

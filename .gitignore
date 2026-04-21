@@ -55,3 +55,6 @@ desktop.ini
 *.tmp
 .cache/
 
+# Vibe files
+.claude/
+.codex/
