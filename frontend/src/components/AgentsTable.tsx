@@ -1,11 +1,12 @@
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAuth } from "../contexts/AuthContext";
-import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion, FaBolt, FaUser, FaWindows, FaLinux, FaApple, FaClock, FaHistory } from "react-icons/fa";
+import { FaThumbsUp, FaExclamationTriangle, FaSearch, FaDollarSign, FaQuestion, FaBolt, FaUser, FaWindows, FaLinux, FaApple, FaClock, FaHistory, FaUpload, FaSyringe, FaCamera, FaCog, FaTerminal, FaTrashAlt } from "react-icons/fa";
 import { useState, useMemo, useRef } from "react";
-import ContextMenu from "./ContextMenu";
+import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 import FileUploadModal from "./FileUploadModal";
 import ShellcodeInjectModal from "./ShellcodeInjectModal";
 import RemoveAgentModal from "./RemoveAgentModal";
+import { getScripts } from "./Scripts";
 import "./ContextMenu.css";
 import "./FileUploadModal.css";
 import "./ShellcodeInjectModal.css";
@@ -35,12 +36,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [timeFormat, setTimeFormat] = useState<'relative' | 'timestamp'>('timestamp');
-  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; agent: Agent | null }>({
-    visible: false,
-    x: 0,
-    y: 0,
-    agent: null
-  });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; agent: Agent } | null>(null);
   const [showFileDialog, setShowFileDialog] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showInjectModal, setShowInjectModal] = useState(false);
@@ -153,70 +149,55 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
   const handleAgentRightClick = (e: React.MouseEvent, agent: Agent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      agent: agent
-    });
+    setContextMenu({ x: e.clientX, y: e.clientY, agent });
   };
 
-  // Handle context menu actions
-  const handleContextMenuClose = () => {
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
-  };
+  const closeContextMenu = () => setContextMenu(null);
 
   const handleContextMenuPut = () => {
-    if (contextMenu.agent) {
+    if (contextMenu?.agent) {
       setSelectedAgent(contextMenu.agent);
       setShowFileDialog(true);
-      // Trigger file input
       if (fileInputRef.current) {
         fileInputRef.current.click();
       }
     }
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+    closeContextMenu();
   };
 
   const handleContextMenuInject = () => {
-    if (contextMenu.agent) {
+    if (contextMenu?.agent) {
       setSelectedAgent(contextMenu.agent);
-      // Trigger shellcode file input
       if (shellcodeInputRef.current) {
         shellcodeInputRef.current.click();
       }
     }
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+    closeContextMenu();
   };
 
   const handleContextMenuScreenshot = () => {
-    if (!contextMenu.agent || !sendCommand) return;
-
+    if (!contextMenu?.agent || !sendCommand) return;
     const username = user?.username || 'operator';
     sendCommand(contextMenu.agent.id, 'screenshot', username);
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+    closeContextMenu();
   };
 
   const handleScriptExecute = (script: { id: string; name: string; commands: string[]; createdAt: string }) => {
-    if (!contextMenu.agent || !sendCommand) return;
-
+    if (!contextMenu?.agent || !sendCommand) return;
     const agent = contextMenu.agent;
     const username = user?.username || 'operator';
-
-    // Queue all commands in order
     script.commands.forEach((command) => {
       sendCommand(agent.id, command, `${username} (script: ${script.name})`);
     });
-
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+    closeContextMenu();
   };
 
   const handleContextMenuRemove = () => {
-    if (contextMenu.agent) {
+    if (contextMenu?.agent) {
       setSelectedAgent(contextMenu.agent);
       setShowRemoveModal(true);
     }
-    setContextMenu({ visible: false, x: 0, y: 0, agent: null });
+    closeContextMenu();
   };
 
   const handleRemoveConfirm = () => {
@@ -486,7 +467,7 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
           {filteredAgents && filteredAgents.map((agent) => (
             <tr
               key={agent.id}
-              className={`agent-row ${contextMenu.visible && contextMenu.agent?.id === agent.id ? 'context-menu-active' : ''}`}
+              className={`agent-row ${contextMenu && contextMenu.agent?.id === agent.id ? 'context-menu-active' : ''}`}
               onClick={() => onAgentClick(agent)}
               onContextMenu={(e) => handleAgentRightClick(e, agent)}
             >
@@ -629,19 +610,39 @@ export default function AgentsTable({ onAgentClick, onAgentPut, onAgentInject, i
         </tbody>
       </table>
 
-      <ContextMenu
-        isVisible={contextMenu.visible}
-        x={contextMenu.x}
-        y={contextMenu.y}
-        agent={contextMenu.agent}
-        handlers={handlers}
-        onClose={handleContextMenuClose}
-        onPut={handleContextMenuPut}
-        onInject={handleContextMenuInject}
-        onScreenshot={handleContextMenuScreenshot}
-        onScriptExecute={handleScriptExecute}
-        onRemove={handleContextMenuRemove}
-      />
+      {contextMenu && (() => {
+        const agent = contextMenu.agent;
+        const handler = handlers?.find(h => h.agentName === agent.handlerName);
+        const canInject = handler?.supportedCommands.includes('injectsc') ?? false;
+        const canScreenshot = handler?.supportedCommands.includes('screenshot') ?? false;
+        const scripts = getScripts();
+
+        return (
+          <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={closeContextMenu}>
+            <ContextMenuItem icon={<FaUpload />} label="Put File" onClick={handleContextMenuPut} />
+            {canInject && (
+              <ContextMenuItem icon={<FaSyringe />} label="Inject" onClick={handleContextMenuInject} />
+            )}
+            {canScreenshot && (
+              <ContextMenuItem icon={<FaCamera />} label="Screenshot" onClick={handleContextMenuScreenshot} />
+            )}
+            <ContextMenuItem divider label="" onClick={() => {}} />
+            {scripts.map((script) => (
+              <ContextMenuItem
+                key={script.id}
+                icon={<FaTerminal />}
+                label={script.name}
+                onClick={() => handleScriptExecute(script)}
+              />
+            ))}
+            {scripts.length === 0 && (
+              <ContextMenuItem icon={<FaCog />} label="No scripts" onClick={() => {}} disabled />
+            )}
+            <ContextMenuItem divider label="" onClick={() => {}} />
+            <ContextMenuItem icon={<FaTrashAlt />} label="Remove Agent" onClick={handleContextMenuRemove} danger />
+          </ContextMenu>
+        );
+      })()}
 
       {/* Hidden file input for file uploads */}
       <input

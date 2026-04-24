@@ -29,6 +29,7 @@ export interface Listener {
   id: string;
   name: string;
   type: string;
+  port?: number;
   endpoint: string;
   status: string;
   description?: string;

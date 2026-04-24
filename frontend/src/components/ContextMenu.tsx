@@ -1,215 +1,101 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FaUpload, FaSyringe, FaTimes, FaChevronRight, FaCog, FaTerminal, FaTrashAlt, FaCamera } from 'react-icons/fa';
-import { getScripts } from './Scripts';
-
-interface Script {
-  id: string;
-  name: string;
-  commands: string[];
-  createdAt: string;
-}
-
-import { Agent, AgentHandler } from '../hooks/useWebSocket';
+import { useEffect, useRef, ReactNode } from "react";
 
 interface ContextMenuProps {
-  isVisible: boolean;
   x: number;
   y: number;
-  agent: Agent | null;
-  handlers?: AgentHandler[];
   onClose: () => void;
-  onPut: () => void;
-  onInject: () => void;
-  onScreenshot: () => void;
-  onScriptExecute: (script: Script) => void;
-  onRemove: () => void;
+  children: ReactNode;
 }
 
-export default function ContextMenu({ isVisible, x, y, agent, handlers, onClose, onPut, onInject, onScreenshot, onScriptExecute, onRemove }: ContextMenuProps) {
+export function ContextMenu({ x, y, onClose, children }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [adjustedPosition, setAdjustedPosition] = useState({ x, y });
-  const [scriptsExpanded, setScriptsExpanded] = useState(false);
-  const [scripts, setScripts] = useState<Script[]>([]);
-
-  // Check if agent supports injection
-  const canInject = React.useMemo(() => {
-    if (!agent || !handlers) return false;
-
-    // Find handler for this agent
-    // The agent.handlerName matches the handler.agentName
-    // Or we can match by ID if available, but let's try name first as it's visible in table
-    const handler = handlers.find(h => h.agentName === agent.handlerName);
-
-    if (!handler) return false;
-
-    return handler.supportedCommands.includes('injectsc');
-  }, [agent, handlers]);
-
-  // Check if agent supports screenshot
-  const canScreenshot = React.useMemo(() => {
-    if (!agent || !handlers) return false;
-
-    const handler = handlers.find(h => h.agentName === agent.handlerName);
-
-    if (!handler) return false;
-
-    return handler.supportedCommands.includes('screenshot');
-  }, [agent, handlers]);
-
-  // Calculate smart positioning to keep menu within viewport
-  useEffect(() => {
-    if (!isVisible) return;
-
-    // Pre-calculate position without needing the DOM element
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const menuWidth = 200; // Approximate menu width
-    const menuHeight = 100; // Approximate menu height
-
-    let adjustedX = x;
-    let adjustedY = y;
-
-    // Check if menu would go off the right edge
-    if (x + menuWidth > viewportWidth) {
-      adjustedX = viewportWidth - menuWidth - 10; // 10px margin
-    }
-
-    // Check if menu would go off the bottom edge
-    if (y + menuHeight > viewportHeight) {
-      adjustedY = viewportHeight - menuHeight - 10; // 10px margin
-    }
-
-    // Check for bottom terminal overlap (assuming terminal is at bottom)
-    const bottomTerminal = document.querySelector('.bottom-terminal');
-    if (bottomTerminal) {
-      const terminalRect = bottomTerminal.getBoundingClientRect();
-      const terminalTop = terminalRect.top;
-
-      // If menu would overlap with terminal, position it above the terminal
-      if (adjustedY + menuHeight > terminalTop) {
-        adjustedY = terminalTop - menuHeight - 10;
-      }
-    }
-
-    // Ensure menu doesn't go off the left or top edges
-    adjustedX = Math.max(10, adjustedX);
-    adjustedY = Math.max(10, adjustedY);
-
-    setAdjustedPosition({ x: adjustedX, y: adjustedY });
-  }, [isVisible, x, y]);
-
-  // Load scripts when menu opens
-  useEffect(() => {
-    if (isVisible) {
-      setScripts(getScripts());
-      setScriptsExpanded(false);
-    }
-  }, [isVisible]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
 
-    if (isVisible) {
+    // Add slight delay to prevent immediate close from the same click that opened it
+    setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('keydown', handleEscape);
-    }
+      document.addEventListener('contextmenu', handleClickOutside);
+    }, 0);
+
+    document.addEventListener('keydown', handleEscape);
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('contextmenu', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
-  }, [isVisible, onClose]);
+  }, [onClose]);
 
-  if (!isVisible) return null;
+  // Adjust position if menu goes off screen
+  useEffect(() => {
+    if (menuRef.current) {
+      const rect = menuRef.current.getBoundingClientRect();
+      const adjustedX = x + rect.width > window.innerWidth ? window.innerWidth - rect.width - 10 : x;
+      const adjustedY = y + rect.height > window.innerHeight ? window.innerHeight - rect.height - 10 : y;
 
-  const handleScriptClick = (script: Script) => {
-    onScriptExecute(script);
-    onClose();
-  };
+      if (adjustedX !== x || adjustedY !== y) {
+        menuRef.current.style.left = `${adjustedX}px`;
+        menuRef.current.style.top = `${adjustedY}px`;
+      }
+    }
+  }, [x, y]);
 
   return (
     <div
       ref={menuRef}
-      className={`context-menu ${isVisible ? 'visible' : ''}`}
+      className="context-menu"
       style={{
         position: 'fixed',
-        left: adjustedPosition.x,
-        top: adjustedPosition.y,
-        zIndex: 1000
+        left: `${x}px`,
+        top: `${y}px`,
+        zIndex: 10000,
       }}
     >
-      <div className="context-menu-item" onClick={onPut}>
-        <FaUpload className="context-menu-icon" />
-        <span>Put File</span>
-      </div>
-      {canInject && (
-        <div className="context-menu-item" onClick={onInject}>
-          <FaSyringe className="context-menu-icon" />
-          <span>Inject</span>
-        </div>
-      )}
-      {canScreenshot && (
-        <div className="context-menu-item" onClick={onScreenshot}>
-          <FaCamera className="context-menu-icon" />
-          <span>Screenshot</span>
-        </div>
-      )}
-
-      {/* Scripts Section */}
-      <div className="context-menu-divider" />
-      <div className="context-menu-item-wrapper">
-        <div
-          className="context-menu-item context-menu-expandable"
-          onClick={(e) => {
-            e.stopPropagation();
-            setScriptsExpanded(!scriptsExpanded);
-          }}
-        >
-          <FaCog className="context-menu-icon" />
-          <span>Scripts</span>
-          <FaChevronRight
-            className={`context-menu-chevron ${scriptsExpanded ? 'expanded' : ''}`}
-          />
-        </div>
-
-        {scriptsExpanded && (
-          <div className="context-menu-submenu">
-            {scripts.length === 0 ? (
-              <div className="context-menu-item disabled">
-                <span style={{ fontSize: '0.85rem', fontStyle: 'italic' }}>No scripts available</span>
-              </div>
-            ) : (
-              scripts.map((script) => (
-                <div
-                  key={script.id}
-                  className="context-menu-item context-menu-script"
-                  onClick={() => handleScriptClick(script)}
-                  title={`${script.commands.length} command${script.commands.length !== 1 ? 's' : ''}`}
-                >
-                  <FaTerminal className="context-menu-icon" style={{ fontSize: '0.9rem' }} />
-                  <span>{script.name}</span>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="context-menu-divider" />
-      <div className="context-menu-item context-menu-item-danger" onClick={onRemove}>
-        <FaTrashAlt className="context-menu-icon context-menu-icon-danger" />
-        <span>Remove Agent</span>
-      </div>
+      {children}
     </div>
+  );
+}
+
+interface ContextMenuItemProps {
+  icon?: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  divider?: boolean;
+}
+
+export function ContextMenuItem({ icon, label, onClick, disabled = false, danger = false, divider = false }: ContextMenuItemProps) {
+  const handleClick = () => {
+    if (!disabled) {
+      onClick();
+    }
+  };
+
+  if (divider) {
+    return <div className="context-menu-divider" />;
+  }
+
+  return (
+    <button
+      className={`context-menu-item ${disabled ? 'disabled' : ''} ${danger ? 'danger' : ''}`}
+      onClick={handleClick}
+      disabled={disabled}
+    >
+      {icon && <span className="context-menu-icon">{icon}</span>}
+      <span className="context-menu-label">{label}</span>
+    </button>
   );
 }
